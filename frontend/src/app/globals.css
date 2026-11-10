@@ -1,0 +1,352 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ------------------------------------------------------------------ */
+/* Tokens                                                              */
+/* The theme is chosen by <html data-theme>, set before first paint    */
+/* by the inline script in app/layout.tsx (Light / Dark / System).     */
+/* ------------------------------------------------------------------ */
+:root {
+  color-scheme: light;
+  /* app frame (behind the sidebar) → canvas (page) → surface (cards) */
+  --bg: #efeff2;
+  --canvas: #fafafb;
+  --surface: #ffffff;
+  --surface-2: #f4f4f6;
+  --surface-3: #e8e8ec;
+  --border: #e4e4e9;
+  --border-strong: #d1d1d8;
+  --text: #17171c;
+  --text-2: #50505a;
+  --text-3: #74747e;
+
+  /* brand: fills (buttons, chart) and text (links, active icons) are separate
+     so each keeps its contrast in both themes */
+  --brand: #5a4ff3;
+  --brand-hover: #4c41e3;
+  --brand-text: #4d42e2;
+  --brand-soft: #eeedfe;
+  --brand-2: #8b5cf6;
+
+  --primary: var(--brand);
+  --primary-hover: var(--brand-hover);
+  --primary-fg: #ffffff;
+  --accent: var(--brand-text);
+  --accent-soft: var(--brand-soft);
+
+  --success: #127a45;
+  --success-soft: #e5f5ec;
+  --warning: #a65b00;
+  --warning-soft: #fdf1de;
+  --danger: #d02d2a;
+  --danger-soft: #fdeceb;
+
+  --ring: rgba(90, 79, 243, 0.26);
+  --shadow-sm: 0 1px 2px rgba(23, 23, 28, 0.05);
+  --shadow-md: 0 1px 2px rgba(23, 23, 28, 0.05), 0 6px 20px -4px rgba(23, 23, 28, 0.1);
+  --shadow-lg: 0 2px 4px rgba(23, 23, 28, 0.04), 0 24px 64px -12px rgba(23, 23, 28, 0.24);
+  --shadow-canvas: 0 1px 2px rgba(23, 23, 28, 0.04), 0 0 0 1px rgba(23, 23, 28, 0.02);
+  --shadow-button: 0 1px 2px rgba(74, 63, 224, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+
+  --chart-1: #5a4ff3;
+  --chart-grid: #ececf0;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #08080a;
+  --canvas: #0f0f12;
+  --surface: #16161a;
+  --surface-2: #1c1c21;
+  --surface-3: #26262d;
+  --border: #25252c;
+  --border-strong: #35353e;
+  --text: #ededf0;
+  --text-2: #a7a7b1;
+  --text-3: #7d7d88;
+
+  --brand: #6157f5;
+  --brand-hover: #6f66f7;
+  --brand-text: #a49dff;
+  --brand-soft: #1e1c3a;
+  --brand-2: #9b6dfa;
+
+  --success: #46c486;
+  --success-soft: #0f2a1c;
+  --warning: #eaa646;
+  --warning-soft: #2e2210;
+  --danger: #f16b68;
+  --danger-soft: #341716;
+
+  --ring: rgba(122, 113, 255, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 64px -12px rgba(0, 0, 0, 0.7);
+  --shadow-canvas: 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --shadow-button: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+
+  --chart-1: #7a71ff;
+  --chart-grid: #232329;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-canvas: var(--canvas);
+  --color-brand: var(--brand);
+  --color-brand-text: var(--brand-text);
+  --color-brand-soft: var(--brand-soft);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-fg-2: var(--text-2);
+  --color-fg-3: var(--text-3);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --shadow-card: var(--shadow-sm);
+  --shadow-pop: var(--shadow-md);
+  --shadow-modal: var(--shadow-lg);
+  --shadow-canvas: var(--shadow-canvas);
+  --shadow-button: var(--shadow-button);
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* While the theme flips, colour transitions would play half-way and leave
+   mixed-theme frames, so they are switched off for that one frame. */
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
+}
+
+/* Theme change reveals as a circle from the toggle (see lib/theme.tsx) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* numbers in tables line up */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pressable: instant feedback on press                               */
+/* ------------------------------------------------------------------ */
+.pressable {
+  transition:
+    transform 160ms var(--ease-out),
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ------------------------------------------------------------------ */
+/* Overlays (Radix data-state driven)                                  */
+/* ------------------------------------------------------------------ */
+.overlay[data-state="open"] {
+  animation: fade-in 200ms var(--ease-out);
+}
+.overlay[data-state="closed"] {
+  animation: fade-out 150ms var(--ease-out);
+}
+
+/* Modals stay centered, so they scale from center */
+.modal[data-state="open"] {
+  animation: modal-in 220ms var(--ease-out);
+}
+.modal[data-state="closed"] {
+  animation: modal-out 140ms var(--ease-out);
+}
+
+.sheet[data-state="open"] {
+  animation: sheet-in 320ms var(--ease-drawer);
+}
+.sheet[data-state="closed"] {
+  animation: sheet-out 200ms var(--ease-out);
+}
+
+.sheet-left[data-state="open"] {
+  animation: sheet-left-in 280ms var(--ease-drawer);
+}
+.sheet-left[data-state="closed"] {
+  animation: sheet-left-out 180ms var(--ease-out);
+}
+
+/* Popovers grow out of their trigger */
+.popover {
+  transform-origin: var(--radix-popper-transform-origin);
+}
+.popover[data-state="open"] {
+  animation: pop-in 160ms var(--ease-out);
+}
+.popover[data-state="closed"] {
+  animation: pop-out 110ms var(--ease-out);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+}
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -49%) scale(0.98);
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-left-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-left-out {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* Content entering after a load: a short rise, staggered by row */
+.rise {
+  animation: rise 260ms var(--ease-out) both;
+}
+/* Children rise in sequence, 50ms apart (rarely-seen screens only, e.g. login) */
+.stagger > * {
+  animation: rise 320ms var(--ease-out) both;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 50ms;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 100ms;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 150ms;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 200ms;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal[data-state],
+  .sheet[data-state],
+  .sheet-left[data-state],
+  .popover[data-state],
+  .tooltip[data-state="delayed-open"],
+  .stagger > *,
+  .rise {
+    animation-name: fade-in;
+  }
+  .modal[data-state="closed"],
+  .sheet[data-state="closed"],
+  .sheet-left[data-state="closed"],
+  .popover[data-state="closed"] {
+    animation-name: fade-out;
+  }
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Print: only the invoice sheet                                       */
+/* ------------------------------------------------------------------ */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

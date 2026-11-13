@@ -9,8 +9,10 @@ import { InvoiceItem } from "./invoice-item.entity";
 import { InvoicePayment } from "./invoice-payment.entity";
 import { InvoiceEmail } from "./invoice-email.entity";
 import { Shop } from "../shop/shop.entity";
+import { DocumentRevision } from "../util/document-revision.entity";
 
-// Issued invoices are never edited. A mistake is fixed by cancelling (stock goes back) and re-issuing.
+// An issued invoice can be edited in place (same number; stock follows; every edit is kept in document_revision)
+// or cancelled (stock goes back). Its kind (GST or not), date and payments don't change by editing.
 @Entity("invoice")
 @Index("idx_invoice_date", ["invoiceDate"])
 @Unique("uq_invoice_shop_number", ["shop", "invoiceNumber"])
@@ -25,6 +27,10 @@ export class Invoice extends AuditEntity {
 
   @Column({ name: "invoice_date", type: "datetime" })
   invoiceDate: Date;
+
+  // A GST tax invoice, or a bill without GST (no tax, its own number series). Both sell from the same stock.
+  @Column({ name: "is_gst", default: true })
+  isGst: boolean;
 
   @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: "customer_id" })
@@ -169,4 +175,7 @@ export class Invoice extends AuditEntity {
 
   @OneToMany(() => InvoiceEmail, (email) => email.invoice)
   emails: InvoiceEmail[];
+
+  // edit history, newest first (filled in by the service; not a column)
+  revisions?: DocumentRevision[];
 }

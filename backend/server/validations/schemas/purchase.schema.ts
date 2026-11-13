@@ -11,6 +11,7 @@ export const createPurchaseSchema = joi.object({
   supplierId: joi.number().integer().positive().required(),
   supplierBillNo: joi.string().trim().max(50).allow("", null).optional(),
   purchaseDate: joi.date().iso().optional(),
+  isGst: joi.boolean().optional(),
   notes: joi.string().allow("", null).optional(),
   items: joi
     .array()
@@ -35,12 +36,18 @@ export const createPurchaseSchema = joi.object({
   updateProductCost: joi.boolean().optional(),
 });
 
+// Editing keeps the purchase's payments: those are recorded separately
+export const updatePurchaseSchema = createPurchaseSchema.fork(["paidAmount", "paymentMode"], (schema) =>
+  schema.forbidden()
+);
+
 export const purchaseListSchema = joi.object({
   page: joi.number().integer().min(1),
   limit: joi.number().integer().min(1).max(200),
   keyword: joi.string().allow(""),
   supplierId: joi.number().integer().positive(),
   paymentStatus: joi.string().valid(...Object.values(TPaymentStatus)),
+  gst: joi.string().valid("true", "false", ""),
   from: joi.date().iso(),
   to: joi.date().iso(),
 });

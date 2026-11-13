@@ -39,6 +39,10 @@ export class Shop extends PrimaryAuditEntity {
   @Column({ name: "purchase_prefix", length: 10 })
   purchasePrefix: string;
 
+  // bills without GST are numbered in their own series, so the GST invoice series stays unbroken
+  @Column({ name: "non_gst_prefix", length: 10, default: "BILL" })
+  nonGstPrefix: string;
+
   // printed on invoices: logo as a small data URL (up to ~400 KB), and how customers can pay.
   // Not loaded with the shop: read it explicitly where it's printed (see GET /settings/logos).
   @Column({ type: "mediumtext", nullable: true, select: false })

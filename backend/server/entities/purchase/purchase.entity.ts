@@ -6,6 +6,7 @@ import { Supplier } from "../party/supplier.entity";
 import { PurchaseItem } from "./purchase-item.entity";
 import { PurchasePayment } from "./purchase-payment.entity";
 import { Shop } from "../shop/shop.entity";
+import { DocumentRevision } from "../util/document-revision.entity";
 
 // A purchase is the goods-receipt + supplier bill in one: saving it brings stock in.
 @Entity("purchase")
@@ -24,6 +25,11 @@ export class Purchase extends AuditEntity {
 
   @Column({ name: "purchase_date", type: "datetime" })
   purchaseDate: Date;
+
+  // A supplier bill with GST (input tax), or without GST (no tax; the price paid is the cost).
+  // Both bring goods into the same stock.
+  @Column({ name: "is_gst", default: true })
+  isGst: boolean;
 
   @ManyToOne(() => Supplier, { nullable: false })
   @JoinColumn({ name: "supplier_id" })
@@ -87,4 +93,7 @@ export class Purchase extends AuditEntity {
     cascade: true,
   })
   payments: PurchasePayment[];
+
+  // edit history, newest first (filled in by the service; not a column)
+  revisions?: DocumentRevision[];
 }

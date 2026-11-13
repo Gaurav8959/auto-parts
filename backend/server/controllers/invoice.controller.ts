@@ -7,6 +7,7 @@ import {
   TInvoiceCopy,
   TInvoiceEmailRequest,
   TInvoiceListParams,
+  TInvoiceUpdate,
   TInvoicePayment,
 } from "../types/invoice.type";
 import ApiResponse from "../utilities/api-response.utility";
@@ -23,6 +24,7 @@ const list: IController = async (req, res) => {
     paymentStatus: ApiUtility.getQueryParam(req, "paymentStatus"),
     status: ApiUtility.getQueryParam(req, "status"),
     overdue: ApiUtility.getQueryParam(req, "overdue"),
+    gst: ApiUtility.getQueryParam(req, "gst"),
     from: ApiUtility.getQueryParam(req, "from"),
     to: ApiUtility.getQueryParam(req, "to"),
   };
@@ -45,6 +47,12 @@ const create: IController = async (req, res) => {
   const params: TInvoice = req.body;
   const data = await invoiceService.create(params, req.user.id, req.permissions, requireShop(req.shopId));
   return ApiResponse.result(res, data, httpStatusCodes.CREATED);
+};
+
+const update: IController = async (req, res) => {
+  const params: TInvoiceUpdate = req.body;
+  const data = await invoiceService.update(Number(req.params.id), params, req.user.id, req.permissions, req.shopId);
+  return ApiResponse.result(res, data, httpStatusCodes.OK);
 };
 
 const addPayment: IController = async (req, res) => {
@@ -75,4 +83,4 @@ const sendEmail: IController = async (req, res) => {
   return ApiResponse.result(res, data, httpStatusCodes.OK);
 };
 
-export default { list, detail, create, addPayment, cancel, pdf, sendEmail };
+export default { list, detail, create, update, addPayment, cancel, pdf, sendEmail };

@@ -22,9 +22,14 @@ const gst: IController = async (req, res) => {
   return ApiResponse.result(res, data, httpStatusCodes.OK);
 };
 
+const gstInput: IController = async (req, res) => {
+  const data = await reportService.gstInput(getRange(req));
+  return ApiResponse.result(res, data, httpStatusCodes.OK);
+};
+
 const stock: IController = async (req, res) => {
   const data = await reportService.stock(req.shopId);
   return ApiResponse.result(res, data, httpStatusCodes.OK);
 };
 
-export default { sales, gst, stock };
+export default { sales, gst, gstInput, stock };

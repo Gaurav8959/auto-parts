@@ -9,6 +9,7 @@ import { identifireValidation } from "../../validations/comman.validation";
 import {
   cancelInvoiceSchema,
   createInvoiceSchema,
+  updateInvoiceSchema,
   emailInvoiceSchema,
   invoiceListSchema,
   invoicePdfSchema,
@@ -59,6 +60,15 @@ invoiceRouter.post(
   hasPermission(TPermission.INVOICE_CREATE),
   validator.body(createInvoiceSchema),
   apExpressAsyncHandler(invoiceController.create)
+);
+
+// Edit an issued invoice (same number; stock follows; kept in its history)
+invoiceRouter.put(
+  "/:id",
+  hasPermission(TPermission.INVOICE_EDIT),
+  validator.params(identifireValidation),
+  validator.body(updateInvoiceSchema),
+  apExpressAsyncHandler(invoiceController.update)
 );
 
 invoiceRouter.post(

@@ -9,6 +9,7 @@ export type TShop = {
   invoiceTerms?: string;
   invoicePrefix?: string;
   purchasePrefix?: string;
+  nonGstPrefix?: string;
   logo?: string;
   bankName?: string;
   bankAccountName?: string;

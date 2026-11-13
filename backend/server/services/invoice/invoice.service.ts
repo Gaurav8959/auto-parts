@@ -1,6 +1,6 @@
 import moment from "moment-timezone";
 import { Brackets, In } from "typeorm";
-import { INVOICE_NUMBER_SEQ } from "../../constants/sequence.const";
+import { INVOICE_NUMBER_SEQ, NON_GST_INVOICE_NUMBER_SEQ } from "../../constants/sequence.const";
 import { AppDataSource } from "../../data-source/data-source";
 import {
   CustomerRepository,
@@ -24,6 +24,7 @@ import {
   TInvoicePayment,
   TInvoicePaymentType,
   TInvoiceStatus,
+  TInvoiceUpdate,
 } from "../../types/invoice.type";
 import { TPermission } from "../../types/permission.type";
 import ApiUtility from "../../utilities/api.utility";
@@ -36,7 +37,9 @@ import { TShopScope } from "../../types/shop.type";
 import stockService from "../inventory/stock.service";
 import { getPaymentStatus } from "../purchase/purchase.service";
 import sequenceService from "../utility/sequence.service";
-import { calculateInvoice } from "./invoice-calculator";
+import { calculateInvoice, extraDiscountOf } from "./invoice-calculator";
+import revisionService from "../utility/revision.service";
+import { TRevisionDocument } from "../../types/revision.type";
 import { InvoiceEmail, TInvoiceEmailStatus } from "../../entities/invoice/invoice-email.entity";
 import { invoicePdfDefinition } from "../../pdf/invoice-pdf.template";
 import { generatePdf } from "../../pdf/pdf-generator";
@@ -85,6 +88,9 @@ const list = async (params: TInvoiceListParams) => {
   }
   if (params.status) {
     query.andWhere("invoice.status = :status", { status: params.status });
+  }
+  if (params.gst === "true" || params.gst === "false") {
+    query.andWhere("invoice.isGst = :isGst", { isGst: params.gst === "true" });
   }
   // past the due date and still not fully paid
   if (params.overdue === "true") {
@@ -135,6 +141,7 @@ const detail = async (id: number, shopId: TShopScope) => {
   // or the business logo when the shop has none
   const shop = await ShopRepository.findOne({ where: { id: invoice.shop.id }, select: { id: true, logo: true } });
   invoice.shop.logo = shop?.logo || (await settingsService.businessLogo());
+  invoice.revisions = await revisionService.history(TRevisionDocument.INVOICE, invoice.id);
   return invoice;
 };
 
@@ -143,6 +150,11 @@ const detail = async (id: number, shopId: TShopScope) => {
 // invoice number is taken last, so the shop's numbering lock is held only while the bill is written.
 const create = async (params: TInvoice, userId: number, permissions: string[], shopId: number) => {
   const canDiscount = permissions.includes(TPermission.INVOICE_DISCOUNT);
+  // A bill without GST sells from the same stock; it carries no tax and is numbered in its own series
+  const isGst = params.isGst !== false;
+  if (!isGst && !permissions.includes(TPermission.INVOICE_NON_GST)) {
+    throw new ForbiddenError("You are not allowed to make bills without GST.");
+  }
   const shop = await ShopRepository.findOne({ where: { id: shopId } });
 
   let customer: Customer = null;
@@ -186,7 +198,8 @@ const create = async (params: TInvoice, userId: number, permissions: string[], s
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           discountPercent: item.discountPercent || 0,
-          taxPercent: Number(products[i].taxPercent),
+          // without GST the whole line amount is the price: nothing is carved out as tax
+          taxPercent: isGst ? Number(products[i].taxPercent) : 0,
         })),
         params.extraDiscount || 0
       );
@@ -206,24 +219,25 @@ const create = async (params: TInvoice, userId: number, permissions: string[], s
       params.items.reduce((sum, item, i) => sum + item.quantity * unitCosts[i], 0)
     );
 
-    const { placeOfSupply, isInterState } = placeOfSupplyFor(shop.gstin, customer?.gstin, params.placeOfSupply);
+    // place of supply only matters for GST (CGST + SGST or IGST)
+    const { placeOfSupply, isInterState } = isGst
+      ? placeOfSupplyFor(shop.gstin, customer?.gstin, params.placeOfSupply)
+      : { placeOfSupply: null, isInterState: false };
 
-    const invoiceNumber = await sequenceService.getNextNumber(
-      manager,
-      INVOICE_NUMBER_SEQ,
-      shopId,
-      shop.invoicePrefix
-    );
+    const invoiceNumber = isGst
+      ? await sequenceService.getNextNumber(manager, INVOICE_NUMBER_SEQ, shopId, shop.invoicePrefix)
+      : await sequenceService.getNextNumber(manager, NON_GST_INVOICE_NUMBER_SEQ, shopId, shop.nonGstPrefix);
 
     const invoice = await manager.getRepository(Invoice).save({
       invoiceNumber,
+      isGst,
       shop: { id: shopId },
       invoiceDate: params.invoiceDate ? new Date(params.invoiceDate) : new Date(),
       customer: customer ? { id: customer.id } : null,
       customerName: customer?.name || params.customerName?.trim() || WALK_IN_CUSTOMER,
       customerPhone: customer?.phone || params.customerPhone,
       customerAddress: customer?.address,
-      customerGstin: customer?.gstin,
+      customerGstin: isGst ? customer?.gstin : null,
       customerEmail: customer?.email || params.customerEmail?.trim() || null,
       // credit customers get a due date; a fully paid bill has nothing due
       dueDate:
@@ -298,6 +312,270 @@ const create = async (params: TInvoice, userId: number, permissions: string[], s
     );
 
     return invoice.id;
+  });
+
+  return detail(id, shopId);
+};
+
+// The invoice as its history keeps it (no cost: the history is shown to everyone who sees the invoice)
+const snapshotOf = (invoice: Invoice) => ({
+  customerName: invoice.customerName,
+  customerPhone: invoice.customerPhone,
+  customerEmail: invoice.customerEmail,
+  customerGstin: invoice.customerGstin,
+  vehicleNumber: invoice.vehicleNumber,
+  placeOfSupply: invoice.placeOfSupply,
+  dueDate: invoice.dueDate,
+  notes: invoice.notes,
+  subTotal: Number(invoice.subTotal),
+  discountTotal: Number(invoice.discountTotal),
+  taxTotal: Number(invoice.taxTotal),
+  roundOff: Number(invoice.roundOff),
+  grandTotal: Number(invoice.grandTotal),
+  items: invoice.items.map((item) => ({
+    productId: item.product?.id,
+    productName: item.productName,
+    sku: item.sku,
+    quantity: Number(item.quantity),
+    unitPrice: Number(item.unitPrice),
+    discountPercent: Number(item.discountPercent),
+    taxPercent: Number(item.taxPercent),
+    lineTotal: Number(item.lineTotal),
+  })),
+});
+
+const sumByProduct = (lines: { productId: number; quantity: number }[]) => {
+  const map = new Map<number, number>();
+  lines.forEach((l) => map.set(l.productId, twoDecimalFloat((map.get(l.productId) || 0) + l.quantity)));
+  return map;
+};
+
+// Edits an issued invoice in place: same number, same kind (GST or not). Lines, prices, discounts and the
+// customer can all change. Stock moves by the difference only, cost stays what it was for lines already
+// billed, and the edit is kept in the invoice's history. Payments are recorded separately and stay as they are.
+const update = async (id: number, params: TInvoiceUpdate, userId: number, permissions: string[], shopId: TShopScope) => {
+  const existing = await detail(id, shopId);
+  if (existing.status === TInvoiceStatus.CANCELLED) throw new StringError("A cancelled invoice can't be edited.");
+  const invoiceShopId = existing.shop.id;
+  const canDiscount = permissions.includes(TPermission.INVOICE_DISCOUNT);
+
+  let customer: Customer = null;
+  if (params.customerId) {
+    customer = await CustomerRepository.findOne({
+      where: { id: params.customerId, shop: { id: invoiceShopId }, isDeleted: false },
+    });
+    if (!customer) throw new StringError("Customer not found in this shop.");
+  }
+
+  await transactionWithRetry(async (manager) => {
+    const repo = manager.getRepository(Invoice);
+    const invoice = await repo.findOne({ where: { id }, relations: { shop: true }, lock: { mode: "pessimistic_write" } });
+    if (!invoice) throw new StringError("Invoice not found.");
+    if (invoice.status === TInvoiceStatus.CANCELLED) throw new StringError("A cancelled invoice can't be edited.");
+    invoice.items = await manager.getRepository(InvoiceItem).find({
+      where: { invoice: { id } },
+      relations: { product: true },
+      order: { id: "ASC" },
+    });
+    const isGst = invoice.isGst !== false;
+
+    const oldQty = sumByProduct(invoice.items.map((i) => ({ productId: i.product.id, quantity: Number(i.quantity) })));
+    const newQty = sumByProduct(params.items);
+    const oldLine = new Map<number, InvoiceItem>();
+    invoice.items.forEach((item) => oldLine.has(item.product.id) || oldLine.set(item.product.id, item));
+
+    const productIds = [...new Set([...params.items.map((i) => i.productId), ...oldQty.keys()])];
+    const found = await manager.getRepository(Product).find({ where: { id: In(productIds) } });
+    const productById = new Map(found.map((product) => [product.id, product]));
+
+    const products = params.items.map((item) => {
+      const product = productById.get(item.productId);
+      const before = oldLine.get(item.productId);
+      if (!product || (!before && product.isDeleted)) throw new StringError("One of the products was not found.");
+      // more of an inactive product can't be sold, but a line already on the bill can stay
+      if ((newQty.get(product.id) || 0) > (oldQty.get(product.id) || 0) && (!product.isActive || product.isDeleted)) {
+        throw new StringError(`"${product.name}" is inactive and cannot be billed.`);
+      }
+      // a discount already on the bill can stay; giving a new one needs the permission
+      const priceChanged =
+        !before ||
+        Number(before.unitPrice) !== item.unitPrice ||
+        Number(before.discountPercent) !== (item.discountPercent || 0);
+      const isDiscounted = (item.discountPercent || 0) > 0 || item.unitPrice < Number(product.sellingPrice);
+      if (priceChanged && isDiscounted && !canDiscount) {
+        throw new ForbiddenError(`You are not allowed to give a discount on "${product.name}".`);
+      }
+      return product;
+    });
+
+    const oldExtra = extraDiscountOf(
+      invoice.items.map((i) => ({
+        quantity: Number(i.quantity),
+        unitPrice: Number(i.unitPrice),
+        discountPercent: Number(i.discountPercent),
+      })),
+      Number(invoice.discountTotal)
+    );
+    const extraDiscount = params.extraDiscount || 0;
+    if (extraDiscount > 0 && extraDiscount !== oldExtra && !canDiscount) {
+      throw new ForbiddenError("You are not allowed to give a discount.");
+    }
+
+    let totals: ReturnType<typeof calculateInvoice>;
+    try {
+      totals = calculateInvoice(
+        params.items.map((item, i) => ({
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discountPercent: item.discountPercent || 0,
+          taxPercent: isGst ? Number(products[i].taxPercent) : 0,
+        })),
+        extraDiscount
+      );
+    } catch (e) {
+      throw new StringError(e.message);
+    }
+
+    // money already received stays received: the bill can't drop below it
+    const paid = twoDecimalFloat(Number(invoice.paidAmount));
+    if (totals.grandTotal < paid) {
+      throw new StringError(
+        `${formatInr(paid)} has already been paid on this invoice, more than the new total of ${formatInr(totals.grandTotal)}. ` +
+          `Keep the total at ${formatInr(paid)} or more, or cancel the invoice to refund.`
+      );
+    }
+
+    const stockRows = await stockService.lockStockRows(manager, invoice.shop.id, found);
+    // cost of goods: what it was for products already billed, today's average for anything added
+    const unitCosts = products.map((p) =>
+      oldLine.has(p.id)
+        ? Number(oldLine.get(p.id).unitCost)
+        : Number(stockRows.get(p.id)?.avgCost || p.purchasePrice || 0)
+    );
+    const costTotal = twoDecimalFloat(params.items.reduce((sum, item, i) => sum + item.quantity * unitCosts[i], 0));
+
+    const { placeOfSupply, isInterState } = isGst
+      ? placeOfSupplyFor(invoice.shop.gstin, customer?.gstin, params.placeOfSupply)
+      : { placeOfSupply: null, isInterState: false };
+
+    const balance = twoDecimalFloat(totals.grandTotal - paid);
+    const dueDate =
+      balance <= 0
+        ? null
+        : params.paymentTermsDays !== undefined
+          ? moment.tz(invoice.invoiceDate, SHOP_TIME_ZONE).add(params.paymentTermsDays, "days").endOf("day").toDate()
+          : invoice.dueDate || moment.tz(invoice.invoiceDate, SHOP_TIME_ZONE).endOf("day").toDate();
+
+    const header = {
+      customer: customer ? { id: customer.id } : null,
+      customerName: customer?.name || params.customerName?.trim() || WALK_IN_CUSTOMER,
+      customerPhone: customer?.phone || params.customerPhone || null,
+      customerAddress: customer?.address || null,
+      customerGstin: isGst ? customer?.gstin || null : null,
+      customerEmail: customer?.email || params.customerEmail?.trim() || null,
+      vehicleNumber: params.vehicleNumber?.toUpperCase() || null,
+      placeOfSupply,
+      isInterState,
+      dueDate,
+      notes: params.notes || null,
+      subTotal: totals.subTotal,
+      discountTotal: totals.discountTotal,
+      taxTotal: totals.taxTotal,
+      roundOff: totals.roundOff,
+      grandTotal: totals.grandTotal,
+      costTotal,
+      paymentStatus: getPaymentStatus(paid, totals.grandTotal),
+    };
+
+    const before = snapshotOf(invoice);
+    const day = (d?: Date | null) => (d ? moment(d).tz(SHOP_TIME_ZONE).format("DD MMM YYYY") : "—");
+    const changes = [
+      ...revisionService.field("Customer", before.customerName, header.customerName),
+      ...revisionService.field("Phone", before.customerPhone, header.customerPhone),
+      ...revisionService.field("Email", before.customerEmail, header.customerEmail),
+      ...revisionService.field("Vehicle", before.vehicleNumber, header.vehicleNumber),
+      ...revisionService.field("Place of supply", before.placeOfSupply, header.placeOfSupply),
+      ...revisionService.lines(
+        invoice.items.map((i) => ({
+          productId: i.product.id,
+          name: i.productName,
+          quantity: Number(i.quantity),
+          price: Number(i.unitPrice),
+          discountPercent: Number(i.discountPercent),
+        })),
+        params.items.map((item, i) => ({
+          productId: item.productId,
+          name: products[i].name,
+          quantity: item.quantity,
+          price: item.unitPrice,
+          discountPercent: item.discountPercent || 0,
+        })),
+        "price"
+      ),
+      ...revisionService.money("Extra discount", oldExtra, extraDiscount),
+      ...revisionService.field("Due date", day(before.dueDate), day(header.dueDate)),
+      ...revisionService.field("Note", before.notes, header.notes),
+      ...revisionService.money("Total", before.grandTotal, header.grandTotal),
+    ];
+    // nothing to save
+    if (!changes.length) return;
+
+    await repo.update(id, { ...header, updatedBy: { id: userId } } as any);
+    await manager.getRepository(InvoiceItem).delete({ invoice: { id } });
+    await manager.getRepository(InvoiceItem).insert(
+      totals.items.map((line, i) => ({
+        invoice: { id },
+        product: { id: products[i].id },
+        productName: products[i].name,
+        sku: products[i].sku,
+        partNumber: products[i].partNumber,
+        hsnCode: products[i].hsnCode,
+        unit: products[i].unit,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        discountPercent: line.discountPercent,
+        discountAmount: line.discountAmount,
+        taxPercent: line.taxPercent,
+        taxableAmount: line.taxableAmount,
+        taxAmount: line.taxAmount,
+        lineTotal: line.lineTotal,
+        unitCost: unitCosts[i],
+      })) as any
+    );
+
+    // stock moves by the net difference per product: back in when billed less, out when billed more
+    await stockService.applyMovements(
+      manager,
+      stockRows,
+      productById,
+      productIds
+        .map((productId) => ({
+          productId,
+          change: twoDecimalFloat((oldQty.get(productId) || 0) - (newQty.get(productId) || 0)),
+        }))
+        .filter((m) => m.change !== 0)
+        .map((m) => ({
+          shopId: invoice.shop.id,
+          productId: m.productId,
+          type: TStockTransactionType.SALE_EDIT,
+          quantity: m.change,
+          unitCost: oldLine.has(m.productId) ? Number(oldLine.get(m.productId).unitCost) : undefined,
+          referenceType: INVOICE_REFERENCE,
+          referenceId: invoice.id,
+          referenceNo: invoice.invoiceNumber,
+          note: "Invoice edited",
+          userId,
+        }))
+    );
+
+    await revisionService.record(manager, {
+      documentType: TRevisionDocument.INVOICE,
+      documentId: invoice.id,
+      shopId: invoice.shop.id,
+      changes,
+      before,
+      userId,
+    });
   });
 
   return detail(id, shopId);
@@ -467,4 +745,13 @@ const sendEmail = async (id: number, params: TInvoiceEmailRequest, userId: numbe
   return detail(id, shopId);
 };
 
-export default { list, detail, create, addPayment, cancel, pdf, sendEmail };
+export default {
+  list,
+  detail,
+  create,
+  update,
+  addPayment,
+  cancel,
+  pdf,
+  sendEmail,
+};

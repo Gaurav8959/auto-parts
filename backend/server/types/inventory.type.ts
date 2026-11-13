@@ -5,6 +5,9 @@ export enum TStockTransactionType {
   SALE_CANCELLED = "SALE_CANCELLED",
   ADJUSTMENT_IN = "ADJUSTMENT_IN",
   ADJUSTMENT_OUT = "ADJUSTMENT_OUT",
+  // the net change when an issued invoice or a recorded purchase is edited
+  SALE_EDIT = "SALE_EDIT",
+  PURCHASE_EDIT = "PURCHASE_EDIT",
 }
 
 export enum TAdjustmentReason {

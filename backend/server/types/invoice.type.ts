@@ -30,12 +30,17 @@ export type TInvoice = {
   invoiceDate?: string;
   // GST state code of the place of supply; defaults to the buyer's GSTIN state, else the shop's
   placeOfSupply?: string;
+  // false = a bill without GST (no tax, its own number series); defaults to a GST invoice
+  isGst?: boolean;
   notes?: string;
   items: TInvoiceItem[];
   extraDiscount?: number;
   paidAmount?: number;
   paymentMode?: TPaymentMode;
 };
+
+// Editing an issued invoice: everything except its kind (GST or not), date, number and payments
+export type TInvoiceUpdate = Omit<TInvoice, "isGst" | "invoiceDate" | "paidAmount" | "paymentMode">;
 
 export type TInvoicePayment = {
   amount: number;
@@ -58,6 +63,8 @@ export type TInvoiceListParams = {
   paymentStatus?: TPaymentStatus;
   status?: TInvoiceStatus;
   overdue?: string;
+  // "true" = GST invoices only, "false" = bills without GST only
+  gst?: string;
   from?: string;
   to?: string;
 };

@@ -54,9 +54,18 @@ const taxByRate = (invoice: Invoice) => {
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
 };
 
+// A GST tax invoice, or a plain bill when it was made without GST (no GSTIN, HSN or tax columns)
+export const documentTitle = (invoice: Pick<Invoice, "isGst" | "status">) => {
+  const isGst = invoice.isGst !== false;
+  if (invoice.status === TInvoiceStatus.CANCELLED) return isGst ? "CANCELLED INVOICE" : "CANCELLED BILL";
+  return isGst ? "TAX INVOICE" : "BILL";
+};
+
 export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy): Promise<TDocumentDefinitions> => {
   const shop = invoice.shop;
   const cancelled = invoice.status === TInvoiceStatus.CANCELLED;
+  const isGst = invoice.isGst !== false;
+  const noun = isGst ? "Invoice" : "Bill";
   const due = twoDecimalFloat(invoice.grandTotal - invoice.paidAmount);
   const taxable = twoDecimalFloat(invoice.grandTotal - invoice.roundOff - invoice.taxTotal);
 
@@ -73,12 +82,12 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
     [shop.phone, shop.email].filter(Boolean).length
       ? { text: [shop.phone, shop.email].filter(Boolean).join("  ·  "), fontSize: 8.5, color: MUTED }
       : null,
-    shop.gstin ? { text: [{ text: "GSTIN  ", color: MUTED }, { text: shop.gstin, bold: true }], fontSize: 8.5, margin: [0, 4, 0, 0] } : null,
+    isGst && shop.gstin ? { text: [{ text: "GSTIN  ", color: MUTED }, { text: shop.gstin, bold: true }], fontSize: 8.5, margin: [0, 4, 0, 0] } : null,
   ].filter(Boolean) as Content[];
 
   const meta: TableCell[][] = [
-    [{ text: "Invoice no.", color: MUTED }, { text: invoice.invoiceNumber, bold: true, alignment: RIGHT }],
-    [{ text: "Invoice date", color: MUTED }, { text: day(invoice.invoiceDate), alignment: RIGHT }],
+    [{ text: `${noun} no.`, color: MUTED }, { text: invoice.invoiceNumber, bold: true, alignment: RIGHT }],
+    [{ text: `${noun} date`, color: MUTED }, { text: day(invoice.invoiceDate), alignment: RIGHT }],
   ];
   if (invoice.dueDate && due > 0 && !cancelled) {
     meta.push([{ text: "Due date", color: MUTED }, { text: day(invoice.dueDate), alignment: RIGHT, bold: true }]);
@@ -91,7 +100,7 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
       {
         width: 170,
         stack: [
-          { text: cancelled ? "CANCELLED INVOICE" : "TAX INVOICE", fontSize: 14, bold: true, color: cancelled ? DANGER : BRAND, alignment: RIGHT, characterSpacing: 0.8 },
+          { text: documentTitle(invoice), fontSize: 14, bold: true, color: cancelled ? DANGER : BRAND, alignment: RIGHT, characterSpacing: 0.8 },
           { text: COPY_LABEL[copy], fontSize: 6.5, color: MUTED, alignment: RIGHT, characterSpacing: 0.6, margin: [0, 2, 0, 8] },
           { table: { widths: ["*", "auto"], body: meta }, layout: "noBorders", fontSize: 8.5 },
         ],
@@ -107,7 +116,7 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
     invoice.customerAddress ? { text: invoice.customerAddress, color: MUTED } : null,
     invoice.customerPhone ? { text: invoice.customerPhone, color: MUTED } : null,
     invoice.customerEmail ? { text: invoice.customerEmail, color: MUTED } : null,
-    invoice.customerGstin ? { text: [{ text: "GSTIN  ", color: MUTED }, { text: invoice.customerGstin, bold: true }], margin: [0, 2, 0, 0] } : null,
+    isGst && invoice.customerGstin ? { text: [{ text: "GSTIN  ", color: MUTED }, { text: invoice.customerGstin, bold: true }], margin: [0, 2, 0, 0] } : null,
   ].filter(Boolean) as Content[];
 
   const statusText = cancelled
@@ -148,13 +157,18 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
   };
 
   // ---------------- items ----------------
-  const head = ["#", "Item", "HSN", "Qty", "Rate", "Disc.", "Taxable", "GST", "Amount"].map((h, i) => ({
+  // a bill without GST has no HSN, taxable value or GST columns
+  const heads = isGst
+    ? ["#", "Item", "HSN", "Qty", "Rate", "Disc.", "Taxable", "GST", "Amount"]
+    : ["#", "Item", "Qty", "Rate", "Disc.", "Amount"];
+  const firstNumberColumn = isGst ? 3 : 2;
+  const head = heads.map((h, i) => ({
     text: h.toUpperCase(),
     fontSize: 6.8,
     bold: true,
     color: MUTED,
     characterSpacing: 0.4,
-    alignment: i >= 3 ? RIGHT : LEFT,
+    alignment: i >= firstNumberColumn ? RIGHT : LEFT,
   })) as TableCell[];
 
   const rows: TableCell[][] = invoice.items.map((item, i) => [
@@ -165,17 +179,25 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
         { text: [item.sku, item.partNumber].filter(Boolean).join(" · "), fontSize: 7, color: MUTED },
       ],
     },
-    { text: item.hsnCode || "—", color: MUTED },
+    ...(isGst ? [{ text: item.hsnCode || "—", color: MUTED }] : []),
     { text: `${Number(item.quantity)} ${item.unit}`, alignment: RIGHT },
     { text: formatInr(item.unitPrice), alignment: RIGHT },
     { text: Number(item.discountAmount) ? formatInr(item.discountAmount) : "—", alignment: RIGHT, color: MUTED },
-    { text: formatInr(item.taxableAmount), alignment: RIGHT },
-    { stack: [{ text: `${Number(item.taxPercent)}%` }, { text: formatInr(item.taxAmount), fontSize: 7, color: MUTED }], alignment: RIGHT },
+    ...(isGst
+      ? [
+          { text: formatInr(item.taxableAmount), alignment: RIGHT },
+          { stack: [{ text: `${Number(item.taxPercent)}%` }, { text: formatInr(item.taxAmount), fontSize: 7, color: MUTED }], alignment: RIGHT },
+        ]
+      : []),
     { text: formatInr(item.lineTotal), alignment: RIGHT, bold: true },
   ] as TableCell[]);
 
   const items: Content = {
-    table: { headerRows: 1, widths: [14, "*", 34, 36, 52, 42, 56, 46, 60], body: [head, ...rows] },
+    table: {
+      headerRows: 1,
+      widths: isGst ? [14, "*", 34, 36, 52, 42, 56, 46, 60] : [14, "*", 48, 64, 56, 72],
+      body: [head, ...rows],
+    },
     layout: { ...thinLines, fillColor: (i: number) => (i === 0 ? SOFT : null) },
     fontSize: 8.5,
   };
@@ -202,20 +224,24 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
   const left: Content[] = [
     label("Amount in words"),
     { text: amountInWords(invoice.grandTotal), bold: true, margin: [0, 3, 0, 12] },
-    label("GST summary"),
-    {
-      margin: [0, 3, 0, 12],
-      fontSize: 7.5,
-      table: {
-        headerRows: 1,
-        widths: [30, ...taxHeads.slice(1).map(() => "*")],
-        body: [
-          taxHeads.map((h, i) => ({ text: h, bold: true, color: MUTED, alignment: i ? RIGHT : LEFT }) as TableCell),
-          ...taxRows,
-        ],
-      },
-      layout: thinLines,
-    },
+    ...(isGst
+      ? [
+          label("GST summary"),
+          {
+            margin: [0, 3, 0, 12],
+            fontSize: 7.5,
+            table: {
+              headerRows: 1,
+              widths: [30, ...taxHeads.slice(1).map(() => "*")],
+              body: [
+                taxHeads.map((h, i) => ({ text: h, bold: true, color: MUTED, alignment: i ? RIGHT : LEFT }) as TableCell),
+                ...taxRows,
+              ],
+            },
+            layout: thinLines,
+          } as Content,
+        ]
+      : []),
   ];
 
   const bank = [shop.bankName, shop.bankAccountName, shop.bankAccountNumber, shop.bankIfsc].some(Boolean);
@@ -268,13 +294,17 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
     ...(Number(invoice.discountTotal)
       ? [[{ text: "Discount", color: MUTED }, { text: `− ${formatInr(invoice.discountTotal)}`, alignment: RIGHT }]]
       : []),
-    [{ text: "Taxable value", color: MUTED }, { text: formatInr(taxable), alignment: RIGHT }],
-    ...(interState
-      ? [[{ text: "IGST", color: MUTED }, { text: formatInr(totalTax.igst), alignment: RIGHT }]]
-      : [
-          [{ text: "CGST", color: MUTED }, { text: formatInr(totalTax.cgst), alignment: RIGHT }],
-          [{ text: "SGST", color: MUTED }, { text: formatInr(totalTax.sgst), alignment: RIGHT }],
-        ]),
+    ...(isGst
+      ? [
+          [{ text: "Taxable value", color: MUTED }, { text: formatInr(taxable), alignment: RIGHT }],
+          ...(interState
+            ? [[{ text: "IGST", color: MUTED }, { text: formatInr(totalTax.igst), alignment: RIGHT }]]
+            : [
+                [{ text: "CGST", color: MUTED }, { text: formatInr(totalTax.cgst), alignment: RIGHT }],
+                [{ text: "SGST", color: MUTED }, { text: formatInr(totalTax.sgst), alignment: RIGHT }],
+              ]),
+        ]
+      : []),
     ...(Number(invoice.roundOff)
       ? [[{ text: "Round off", color: MUTED }, { text: formatInr(invoice.roundOff), alignment: RIGHT }]]
       : []),
@@ -355,7 +385,11 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
   return {
     pageSize: "A4",
     pageMargins: [36, 34, 36, 46],
-    info: { title: `Invoice ${invoice.invoiceNumber}`, author: shop.name, subject: `Tax invoice for ${invoice.customerName}` },
+    info: {
+      title: `${noun} ${invoice.invoiceNumber}`,
+      author: shop.name,
+      subject: `${isGst ? "Tax invoice" : "Bill"} for ${invoice.customerName}`,
+    },
     defaultStyle: { font: "Roboto", fontSize: 8.5, color: INK, lineHeight: 1.2 },
     ...(cancelled && { watermark: { text: "CANCELLED", color: DANGER, opacity: 0.08, bold: true } }),
     footer: (currentPage: number, pageCount: number) => ({
@@ -363,7 +397,7 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
       fontSize: 7,
       color: MUTED,
       columns: [
-        { text: "This is a computer-generated invoice." },
+        { text: `This is a computer-generated ${noun.toLowerCase()}.` },
         { text: `${invoice.invoiceNumber}  ·  Page ${currentPage} of ${pageCount}`, alignment: RIGHT },
       ],
     }),

@@ -60,3 +60,15 @@ export const calculateInvoice = (lines: TCalcLine[], extraDiscount = 0) => {
 
   return { items, subTotal, discountTotal, taxTotal, roundOff, grandTotal };
 };
+
+// The bill-level extra discount isn't stored on its own: it is the total discount less each line's % discount
+export const extraDiscountOf = (
+  lines: { quantity: number; unitPrice: number; discountPercent: number }[],
+  discountTotal: number
+) => {
+  const lineDiscounts = lines.reduce(
+    (sum, l) => sum + twoDecimalFloat((twoDecimalFloat(l.quantity * l.unitPrice) * (l.discountPercent || 0)) / 100),
+    0
+  );
+  return Math.max(0, twoDecimalFloat(discountTotal - lineDiscounts));
+};

@@ -19,6 +19,7 @@ const shopFields = {
   invoiceTerms: joi.string().allow("", null),
   invoicePrefix: joi.string().trim().uppercase().alphanum().min(1).max(10),
   purchasePrefix: joi.string().trim().uppercase().alphanum().min(1).max(10),
+  nonGstPrefix: joi.string().trim().uppercase().alphanum().min(1).max(10),
   logo: logoSchema,
   bankName: joi.string().trim().max(100).allow("", null),
   bankAccountName: joi.string().trim().max(150).allow("", null),

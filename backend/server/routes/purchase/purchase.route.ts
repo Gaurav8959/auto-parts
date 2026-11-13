@@ -9,6 +9,7 @@ import {
   createPurchaseSchema,
   paymentSchema,
   purchaseListSchema,
+  updatePurchaseSchema,
 } from "../../validations/schemas/purchase.schema";
 
 const purchaseRouter = express.Router();
@@ -33,6 +34,15 @@ purchaseRouter.post(
   hasPermission(TPermission.PURCHASE_CREATE),
   validator.body(createPurchaseSchema),
   apExpressAsyncHandler(purchaseController.create)
+);
+
+// Edit a recorded purchase (stock and average cost follow; kept in its history)
+purchaseRouter.put(
+  "/:id",
+  hasPermission(TPermission.PURCHASE_EDIT),
+  validator.params(identifireValidation),
+  validator.body(updatePurchaseSchema),
+  apExpressAsyncHandler(purchaseController.update)
 );
 
 purchaseRouter.post(

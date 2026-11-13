@@ -12,6 +12,7 @@ export const createInvoiceSchema = joi.object({
   vehicleNumber: joi.string().trim().max(20).allow("", null).optional(),
   invoiceDate: joi.date().iso().optional(),
   placeOfSupply: joi.string().valid(...GST_STATE_CODES).allow("", null).optional(),
+  isGst: joi.boolean().optional(),
   notes: joi.string().allow("", null).optional(),
   items: joi
     .array()
@@ -38,6 +39,12 @@ export const createInvoiceSchema = joi.object({
     }),
 });
 
+// Editing keeps the invoice's kind, date and payments: those fields aren't accepted
+export const updateInvoiceSchema = createInvoiceSchema.fork(
+  ["isGst", "invoiceDate", "paidAmount", "paymentMode"],
+  (schema) => schema.forbidden()
+);
+
 export const cancelInvoiceSchema = joi.object({
   reason: joi.string().trim().min(3).max(255).required(),
   refundMode: joi.string().valid(...Object.values(TPaymentMode)).optional(),
@@ -51,6 +58,7 @@ export const invoiceListSchema = joi.object({
   paymentStatus: joi.string().valid(...Object.values(TPaymentStatus)),
   status: joi.string().valid(...Object.values(TInvoiceStatus)),
   overdue: joi.string().valid("true", "false", ""),
+  gst: joi.string().valid("true", "false", ""),
   from: joi.date().iso(),
   to: joi.date().iso(),
 });

@@ -56,6 +56,14 @@ const withoutManager = async () => {
   return (await withManagers(shops)).filter((s) => !s.manager);
 };
 
+// GST invoices and bills without GST are numbered separately; one prefix for both would make their
+// numbers collide
+const assertSeparateSeries = (invoicePrefix: string, nonGstPrefix: string) => {
+  if (invoicePrefix && nonGstPrefix && invoicePrefix.toUpperCase() === nonGstPrefix.toUpperCase()) {
+    throw new StringError("Use a different prefix for bills without GST than for GST invoices.");
+  }
+};
+
 // Called inside the "add manager" transaction
 const create = async (manager: EntityManager, params: TShop, userId: number) => {
   const repo = manager.getRepository(Shop);
@@ -63,6 +71,10 @@ const create = async (manager: EntityManager, params: TShop, userId: number) => 
   if (await repo.count({ where: { code } })) {
     throw new StringError(`Shop code ${code} is already used by another shop.`);
   }
+
+  const invoicePrefix = params.invoicePrefix?.toUpperCase() || code;
+  const nonGstPrefix = params.nonGstPrefix?.toUpperCase() || "BILL";
+  assertSeparateSeries(invoicePrefix, nonGstPrefix);
 
   return repo.save({
     name: params.name.trim(),
@@ -73,8 +85,9 @@ const create = async (manager: EntityManager, params: TShop, userId: number) => 
     email: params.email,
     gstin: params.gstin,
     invoiceTerms: params.invoiceTerms,
-    invoicePrefix: params.invoicePrefix?.toUpperCase() || code,
+    invoicePrefix,
     purchasePrefix: params.purchasePrefix?.toUpperCase() || `${code}P`,
+    nonGstPrefix,
     isActive: true,
     createdBy: { id: userId },
     updatedBy: { id: userId },
@@ -100,6 +113,8 @@ const update = async (id: number, params: TShop, userId: number, shopId: TShopSc
   }
   if (changes.invoicePrefix) changes.invoicePrefix = changes.invoicePrefix.toUpperCase();
   if (changes.purchasePrefix) changes.purchasePrefix = changes.purchasePrefix.toUpperCase();
+  if (changes.nonGstPrefix) changes.nonGstPrefix = changes.nonGstPrefix.toUpperCase();
+  assertSeparateSeries(changes.invoicePrefix || shop.invoicePrefix, changes.nonGstPrefix || shop.nonGstPrefix);
 
   await ShopRepository.update(id, changes);
   return detail(id, shopId);

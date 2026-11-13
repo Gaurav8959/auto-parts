@@ -19,6 +19,7 @@ export const permissionSeed: TPermissionDefinition[] = [
   { permission: TPermission.PURCHASE_VIEW, category: "Purchases", description: "View purchases (supplier bills, including their prices)", permissionOrder: 32 },
   { permission: TPermission.PURCHASE_CREATE, category: "Purchases", description: "Record purchases (stock in)", permissionOrder: 33 },
   { permission: TPermission.PURCHASE_PAYMENT, category: "Purchases", description: "Record payments to suppliers", permissionOrder: 34 },
+  { permission: TPermission.PURCHASE_EDIT, category: "Purchases", description: "Edit recorded purchases (stock and cost follow)", permissionOrder: 35 },
 
   { permission: TPermission.CUSTOMER_VIEW, category: "Sales", description: "View customers", permissionOrder: 40 },
   { permission: TPermission.CUSTOMER_MANAGE, category: "Sales", description: "Add, edit and delete customers", permissionOrder: 41 },
@@ -28,6 +29,8 @@ export const permissionSeed: TPermissionDefinition[] = [
   { permission: TPermission.INVOICE_PAYMENT, category: "Sales", description: "Record payments against invoices", permissionOrder: 45 },
   { permission: TPermission.INVOICE_SEND, category: "Sales", description: "Email and share invoices with customers", permissionOrder: 46 },
   { permission: TPermission.INVOICE_CANCEL, category: "Sales", description: "Cancel invoices (returns stock)", permissionOrder: 47 },
+  { permission: TPermission.INVOICE_NON_GST, category: "Sales", description: "Make bills without GST", permissionOrder: 48 },
+  { permission: TPermission.INVOICE_EDIT, category: "Sales", description: "Edit issued invoices (stock follows; every edit is kept in history)", permissionOrder: 49 },
 
   { permission: TPermission.REPORT_VIEW, category: "Reports", description: "View sales, profit and stock reports", permissionOrder: 50 },
   { permission: TPermission.SETTINGS_MANAGE, category: "Settings", description: "Edit their shop's details (address, GSTIN, invoice terms)", permissionOrder: 60 },

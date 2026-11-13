@@ -5,6 +5,7 @@ import {
   TPurchase,
   TPurchaseListParams,
   TPurchasePayment,
+  TPurchaseUpdate,
 } from "../types/purchase.type";
 import ApiResponse from "../utilities/api-response.utility";
 import ApiUtility from "../utilities/api.utility";
@@ -18,6 +19,7 @@ const list: IController = async (req, res) => {
     keyword: ApiUtility.getQueryParam(req, "keyword"),
     supplierId: ApiUtility.getQueryParam(req, "supplierId"),
     paymentStatus: ApiUtility.getQueryParam(req, "paymentStatus"),
+    gst: ApiUtility.getQueryParam(req, "gst"),
     from: ApiUtility.getQueryParam(req, "from"),
     to: ApiUtility.getQueryParam(req, "to"),
   };
@@ -36,10 +38,16 @@ const create: IController = async (req, res) => {
   return ApiResponse.result(res, data, httpStatusCodes.CREATED);
 };
 
+const update: IController = async (req, res) => {
+  const params: TPurchaseUpdate = req.body;
+  const data = await purchaseService.update(Number(req.params.id), params, req.user.id, req.shopId);
+  return ApiResponse.result(res, data, httpStatusCodes.OK);
+};
+
 const addPayment: IController = async (req, res) => {
   const params: TPurchasePayment = req.body;
   const data = await purchaseService.addPayment(Number(req.params.id), params, req.user.id, req.shopId);
   return ApiResponse.result(res, data, httpStatusCodes.OK);
 };
 
-export default { list, detail, create, addPayment };
+export default { list, detail, create, update, addPayment };

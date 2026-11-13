@@ -2,6 +2,7 @@ import {
   InvoiceItemRepository,
   InvoicePaymentRepository,
   InvoiceRepository,
+  PurchaseItemRepository,
   PurchaseRepository,
 } from "../../data-source/repository";
 import { TInvoiceStatus } from "../../types/invoice.type";
@@ -30,6 +31,11 @@ const sales = async (params: TReportParams) => {
     InvoiceRepository.createQueryBuilder("invoice")
       .select("COUNT(invoice.id)", "invoiceCount")
       .addSelect("COALESCE(SUM(invoice.grandTotal), 0)", "sales")
+      // GST invoices and bills without GST, side by side
+      .addSelect("COALESCE(SUM(CASE WHEN invoice.isGst = 1 THEN 1 ELSE 0 END), 0)", "gstCount")
+      .addSelect("COALESCE(SUM(CASE WHEN invoice.isGst = 1 THEN invoice.grandTotal ELSE 0 END), 0)", "gstSales")
+      .addSelect("COALESCE(SUM(CASE WHEN invoice.isGst = 0 THEN 1 ELSE 0 END), 0)", "nonGstCount")
+      .addSelect("COALESCE(SUM(CASE WHEN invoice.isGst = 0 THEN invoice.grandTotal ELSE 0 END), 0)", "nonGstSales")
       .addSelect("COALESCE(SUM(invoice.taxTotal), 0)", "tax")
       .addSelect("COALESCE(SUM(invoice.discountTotal), 0)", "discount")
       .addSelect("COALESCE(SUM(invoice.costTotal), 0)", "cost")
@@ -86,6 +92,8 @@ const sales = async (params: TReportParams) => {
     PurchaseRepository.createQueryBuilder("purchase")
       .select("COUNT(purchase.id)", "count")
       .addSelect("COALESCE(SUM(purchase.grandTotal), 0)", "total")
+      .addSelect("COALESCE(SUM(CASE WHEN purchase.isGst = 1 THEN purchase.grandTotal ELSE 0 END), 0)", "gstTotal")
+      .addSelect("COALESCE(SUM(CASE WHEN purchase.isGst = 0 THEN purchase.grandTotal ELSE 0 END), 0)", "nonGstTotal")
       .where("purchase.purchaseDate BETWEEN :from AND :to")
       .andWhere(shopFilter("purchase", params))
       .setParameters(args)
@@ -122,6 +130,10 @@ const sales = async (params: TReportParams) => {
     summary: {
       invoiceCount: Number(totals.invoiceCount),
       sales: twoDecimalFloat(salesValue),
+      gstCount: Number(totals.gstCount),
+      gstSales: twoDecimalFloat(Number(totals.gstSales)),
+      nonGstCount: Number(totals.nonGstCount),
+      nonGstSales: twoDecimalFloat(Number(totals.nonGstSales)),
       tax: twoDecimalFloat(taxValue),
       discount: twoDecimalFloat(Number(totals.discount)),
       cost: twoDecimalFloat(costValue),
@@ -130,6 +142,8 @@ const sales = async (params: TReportParams) => {
       due: twoDecimalFloat(Number(totals.due)),
       purchaseCount: Number(purchases.count),
       purchaseTotal: twoDecimalFloat(Number(purchases.total)),
+      gstPurchaseTotal: twoDecimalFloat(Number(purchases.gstTotal)),
+      nonGstPurchaseTotal: twoDecimalFloat(Number(purchases.nonGstTotal)),
     },
     daily: daily.map((d) => ({
       day: d.day,
@@ -163,7 +177,8 @@ const sales = async (params: TReportParams) => {
   };
 };
 
-// Tax per rate, split by where the goods went: CGST + SGST within the shop's state, IGST to another state
+// Output tax per rate, split by where the goods went: CGST + SGST within the shop's state, IGST to another
+// state. GST invoices only: bills without GST are not part of the GST return.
 const gst = async (params: TReportParams) => {
   const rows = await InvoiceItemRepository.createQueryBuilder("item")
     .innerJoin("item.invoice", "invoice")
@@ -172,6 +187,7 @@ const gst = async (params: TReportParams) => {
     .addSelect("SUM(item.taxableAmount)", "taxable")
     .addSelect("SUM(item.taxAmount)", "tax")
     .where("invoice.status = :status")
+    .andWhere("invoice.isGst = 1")
     .andWhere("invoice.invoiceDate BETWEEN :from AND :to")
     .andWhere(shopFilter("invoice", params))
     .setParameters(range(params))
@@ -196,9 +212,32 @@ const gst = async (params: TReportParams) => {
   return [...byRate.values()].sort((a, b) => a.taxPercent - b.taxPercent);
 };
 
+// Input tax: GST paid on purchases with GST, per rate. Purchases without GST carry no input tax.
+const gstInput = async (params: TReportParams) => {
+  const rows = await PurchaseItemRepository.createQueryBuilder("item")
+    .innerJoin("item.purchase", "purchase")
+    .select("item.taxPercent", "taxPercent")
+    .addSelect("COUNT(DISTINCT purchase.id)", "purchaseCount")
+    .addSelect("SUM(item.lineTotal - item.taxAmount)", "taxable")
+    .addSelect("SUM(item.taxAmount)", "tax")
+    .where("purchase.isGst = 1")
+    .andWhere("purchase.purchaseDate BETWEEN :from AND :to")
+    .andWhere(shopFilter("purchase", params))
+    .setParameters(range(params))
+    .groupBy("item.taxPercent")
+    .orderBy("item.taxPercent", "ASC")
+    .getRawMany();
+
+  return rows.map((r) => ({
+    taxPercent: Number(r.taxPercent),
+    taxable: twoDecimalFloat(Number(r.taxable)),
+    tax: twoDecimalFloat(Number(r.tax)),
+  }));
+};
+
 const stock = async (shopId: TShopScope) => {
   const [summary, lowStock] = await Promise.all([stockService.summary(shopId), stockService.lowStock(shopId)]);
   return { summary, lowStock };
 };
 
-export default { sales, gst, stock };
+export default { sales, gst, gstInput, stock };

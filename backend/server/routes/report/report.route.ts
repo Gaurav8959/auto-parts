@@ -23,6 +23,13 @@ reportRouter.get(
   apExpressAsyncHandler(reportController.gst)
 );
 
+// GST paid on purchases with GST (input tax)
+reportRouter.get(
+  "/gst-input",
+  validator.query(dateRangeValidation),
+  apExpressAsyncHandler(reportController.gstInput)
+);
+
 reportRouter.get("/stock", apExpressAsyncHandler(reportController.stock));
 
 export default reportRouter;

@@ -18,6 +18,7 @@ import { Permission } from "../entities/usermgmt/permission.entity";
 import { UserPermission } from "../entities/usermgmt/user-permission.entity";
 import { User } from "../entities/usermgmt/user.entity";
 import { Sequence } from "../entities/util/sequence.entity";
+import { DocumentRevision } from "../entities/util/document-revision.entity";
 import { AppDataSource } from "./data-source";
 
 export const UserRepository = AppDataSource.getRepository(User);
@@ -48,4 +49,5 @@ export const InvoicePaymentRepository =
   AppDataSource.getRepository(InvoicePayment);
 
 export const SequenceRepository = AppDataSource.getRepository(Sequence);
+export const DocumentRevisionRepository = AppDataSource.getRepository(DocumentRevision);
 export const ShopSettingRepository = AppDataSource.getRepository(ShopSetting);

@@ -43,6 +43,18 @@ export const calculateInvoice = (lines: CalcLine[], extraDiscount = 0) => {
   };
 };
 
+// The bill-level extra discount isn't stored on its own: the total discount less each line's % discount
+export const extraDiscountOf = (
+  lines: { quantity: number; unitPrice: number; discountPercent: number }[],
+  discountTotal: number
+) => {
+  const lineDiscounts = lines.reduce(
+    (sum, l) => sum + r2((r2(l.quantity * l.unitPrice) * (l.discountPercent || 0)) / 100),
+    0
+  );
+  return Math.max(0, r2(discountTotal - lineDiscounts));
+};
+
 const ONES = [
   "",
   "One",

@@ -34,6 +34,13 @@ export function balanceOf(invoice: Invoice) {
   return r2(invoice.grandTotal - invoice.paidAmount);
 }
 
+// A GST tax invoice, or a plain bill when it was made without GST
+export function documentTitle(invoice: Invoice) {
+  const isGst = invoice.isGst !== false;
+  if (invoice.status === "CANCELLED") return isGst ? "CANCELLED INVOICE" : "CANCELLED BILL";
+  return isGst ? "TAX INVOICE" : "BILL";
+}
+
 export function isOverdue(invoice: Invoice) {
   return (
     invoice.status === "ISSUED" &&
@@ -47,6 +54,9 @@ export function isOverdue(invoice: Invoice) {
 export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoice; copy?: InvoiceCopy }) {
   const shop = invoice.shop;
   const cancelled = invoice.status === "CANCELLED";
+  // a bill without GST shows no GSTIN, HSN or tax
+  const isGst = invoice.isGst !== false;
+  const noun = isGst ? "Invoice" : "Bill";
   const due = balanceOf(invoice);
   const taxable = r2(invoice.grandTotal - invoice.roundOff - invoice.taxTotal);
   // within the shop's state the tax is CGST + SGST; to another state it is IGST
@@ -69,7 +79,7 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
 
   return (
     <article
-      className="invoice-paper relative flex min-h-[297mm] w-[210mm] flex-col bg-white px-[13mm] pt-[12mm] pb-[10mm] text-[11px] leading-[1.45] antialiased"
+      className="invoice-paper relative flex min-h-[297mm] w-[210mm] flex-col bg-white px-[13mm] pt-[12mm] pb-[10mm] text-[11px] leading-[1.45] antialiased print:min-h-[276mm] print:pt-[2mm] print:pb-0"
       style={{ color: INK }}
     >
       {cancelled && (
@@ -96,7 +106,7 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
               </div>
             )}
             <div style={{ color: MUTED }}>{[shop.phone, shop.email].filter(Boolean).join("  ·  ")}</div>
-            {shop.gstin && (
+            {isGst && shop.gstin && (
               <div className="mt-1">
                 <span style={{ color: MUTED }}>GSTIN </span>
                 <span className="font-semibold tracking-wide">{shop.gstin}</span>
@@ -106,18 +116,18 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
         </div>
         <div className="w-[62mm] shrink-0 text-right">
           <div className="text-[18px] font-bold tracking-[0.06em]" style={{ color: cancelled ? "#d02d2a" : BRAND }}>
-            {cancelled ? "CANCELLED INVOICE" : "TAX INVOICE"}
+            {documentTitle(invoice)}
           </div>
           <div className="mt-0.5 text-[8.5px] font-medium tracking-[0.08em] uppercase" style={{ color: MUTED }}>
             {COPY_LABEL[copy]}
           </div>
           <dl className="mt-3 space-y-0.5">
             <div className="flex justify-between gap-4">
-              <dt style={{ color: MUTED }}>Invoice no.</dt>
+              <dt style={{ color: MUTED }}>{noun} no.</dt>
               <dd className="font-semibold">{invoice.invoiceNumber}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt style={{ color: MUTED }}>Invoice date</dt>
+              <dt style={{ color: MUTED }}>{noun} date</dt>
               <dd>{day(invoice.invoiceDate)}</dd>
             </div>
             {invoice.dueDate && due > 0 && !cancelled && (
@@ -140,7 +150,7 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
           {invoice.customerAddress && <div style={{ color: MUTED }}>{invoice.customerAddress}</div>}
           {invoice.customerPhone && <div style={{ color: MUTED }}>{invoice.customerPhone}</div>}
           {invoice.customerEmail && <div style={{ color: MUTED }}>{invoice.customerEmail}</div>}
-          {invoice.customerGstin && (
+          {isGst && invoice.customerGstin && (
             <div className="mt-0.5">
               <span style={{ color: MUTED }}>GSTIN </span>
               <span className="font-semibold">{invoice.customerGstin}</span>
@@ -194,18 +204,22 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
           >
             <th className="px-1.5 py-1.5 text-left">#</th>
             <th className="px-1.5 py-1.5 text-left">Item</th>
-            <th className="px-1.5 py-1.5 text-left">HSN</th>
+            {isGst && <th className="px-1.5 py-1.5 text-left">HSN</th>}
             <th className="px-1.5 py-1.5 text-right">Qty</th>
             <th className="px-1.5 py-1.5 text-right">Rate</th>
             <th className="px-1.5 py-1.5 text-right">Disc.</th>
-            <th className="px-1.5 py-1.5 text-right">Taxable</th>
-            <th className="px-1.5 py-1.5 text-right">GST</th>
+            {isGst && (
+              <>
+                <th className="px-1.5 py-1.5 text-right">Taxable</th>
+                <th className="px-1.5 py-1.5 text-right">GST</th>
+              </>
+            )}
             <th className="px-1.5 py-1.5 text-right">Amount</th>
           </tr>
         </thead>
         <tbody className="tabular">
           {invoice.items?.map((item, i) => (
-            <tr key={item.id} className="border-b border-[#ececf0] align-top">
+            <tr key={item.id} className="break-inside-avoid border-b border-[#ececf0] align-top">
               <td className="px-1.5 py-2" style={{ color: MUTED }}>
                 {i + 1}
               </td>
@@ -215,9 +229,11 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
                   {[item.sku, item.partNumber].filter(Boolean).join(" · ")}
                 </div>
               </td>
-              <td className="px-1.5 py-2" style={{ color: MUTED }}>
-                {item.hsnCode || "—"}
-              </td>
+              {isGst && (
+                <td className="px-1.5 py-2" style={{ color: MUTED }}>
+                  {item.hsnCode || "—"}
+                </td>
+              )}
               <td className="px-1.5 py-2 text-right whitespace-nowrap">
                 {item.quantity} {item.unit}
               </td>
@@ -225,13 +241,17 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
               <td className="px-1.5 py-2 text-right" style={{ color: MUTED }}>
                 {item.discountAmount ? inr(item.discountAmount) : "—"}
               </td>
-              <td className="px-1.5 py-2 text-right">{inr(item.taxableAmount)}</td>
-              <td className="px-1.5 py-2 text-right">
-                <div>{item.taxPercent}%</div>
-                <div className="text-[9px]" style={{ color: MUTED }}>
-                  {inr(item.taxAmount)}
-                </div>
-              </td>
+              {isGst && (
+                <>
+                  <td className="px-1.5 py-2 text-right">{inr(item.taxableAmount)}</td>
+                  <td className="px-1.5 py-2 text-right">
+                    <div>{item.taxPercent}%</div>
+                    <div className="text-[9px]" style={{ color: MUTED }}>
+                      {inr(item.taxAmount)}
+                    </div>
+                  </td>
+                </>
+              )}
               <td className="px-1.5 py-2 text-right font-semibold">{inr(item.lineTotal)}</td>
             </tr>
           ))}
@@ -239,53 +259,55 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
       </table>
 
       {/* summary */}
-      <section className="mt-5 grid grid-cols-[1fr_66mm] gap-8">
+      <section className="mt-5 grid break-inside-avoid grid-cols-[1fr_66mm] gap-8">
         <div>
           <Label>Amount in words</Label>
           <div className="mt-0.5 font-semibold">{amountInWords(invoice.grandTotal)}</div>
 
-          <div className="mt-4">
-            <Label>GST summary</Label>
-            <table className="mt-1 w-full border-collapse text-[9.5px] tabular">
-              <thead>
-                <tr className="border-b border-[#e2e2e8]" style={{ color: MUTED }}>
-                  <th className="py-1 text-left font-medium">Rate</th>
-                  <th className="py-1 text-right font-medium">Taxable</th>
-                  {interState ? (
-                    <th className="py-1 text-right font-medium">IGST</th>
-                  ) : (
-                    <>
-                      <th className="py-1 text-right font-medium">CGST</th>
-                      <th className="py-1 text-right font-medium">SGST</th>
-                    </>
-                  )}
-                  <th className="py-1 text-right font-medium">Total tax</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...byRate.entries()]
-                  .sort((a, b) => a[0] - b[0])
-                  .map(([rate, row]) => {
-                    const split = splitTax(row.tax, interState);
-                    return (
-                      <tr key={rate} className="border-b border-[#ececf0]">
-                        <td className="py-1">{rate}%</td>
-                        <td className="py-1 text-right">{inr(row.taxable)}</td>
-                        {interState ? (
-                          <td className="py-1 text-right">{inr(split.igst)}</td>
-                        ) : (
-                          <>
-                            <td className="py-1 text-right">{inr(split.cgst)}</td>
-                            <td className="py-1 text-right">{inr(split.sgst)}</td>
-                          </>
-                        )}
-                        <td className="py-1 text-right">{inr(row.tax)}</td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
+          {isGst && (
+            <div className="mt-4">
+              <Label>GST summary</Label>
+              <table className="mt-1 w-full border-collapse text-[9.5px] tabular">
+                <thead>
+                  <tr className="border-b border-[#e2e2e8]" style={{ color: MUTED }}>
+                    <th className="py-1 text-left font-medium">Rate</th>
+                    <th className="py-1 text-right font-medium">Taxable</th>
+                    {interState ? (
+                      <th className="py-1 text-right font-medium">IGST</th>
+                    ) : (
+                      <>
+                        <th className="py-1 text-right font-medium">CGST</th>
+                        <th className="py-1 text-right font-medium">SGST</th>
+                      </>
+                    )}
+                    <th className="py-1 text-right font-medium">Total tax</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...byRate.entries()]
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([rate, row]) => {
+                      const split = splitTax(row.tax, interState);
+                      return (
+                        <tr key={rate} className="border-b border-[#ececf0]">
+                          <td className="py-1">{rate}%</td>
+                          <td className="py-1 text-right">{inr(row.taxable)}</td>
+                          {interState ? (
+                            <td className="py-1 text-right">{inr(split.igst)}</td>
+                          ) : (
+                            <>
+                              <td className="py-1 text-right">{inr(split.cgst)}</td>
+                              <td className="py-1 text-right">{inr(split.sgst)}</td>
+                            </>
+                          )}
+                          <td className="py-1 text-right">{inr(row.tax)}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {(hasBank || qr) && (
             <div className="mt-4 flex gap-6">
@@ -334,13 +356,17 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
             {[
               ["Items total", inr(invoice.subTotal)],
               ...(invoice.discountTotal ? [["Discount", `− ${inr(invoice.discountTotal)}`]] : []),
-              ["Taxable value", inr(taxable)],
-              ...(interState
-                ? [["IGST", inr(totalTax.igst)]]
-                : [
-                    ["CGST", inr(totalTax.cgst)],
-                    ["SGST", inr(totalTax.sgst)],
-                  ]),
+              ...(isGst
+                ? [
+                    ["Taxable value", inr(taxable)],
+                    ...(interState
+                      ? [["IGST", inr(totalTax.igst)]]
+                      : [
+                          ["CGST", inr(totalTax.cgst)],
+                          ["SGST", inr(totalTax.sgst)],
+                        ]),
+                  ]
+                : []),
               ...(invoice.roundOff ? [["Round off", inr(invoice.roundOff)]] : []),
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between py-[3px]">
@@ -372,7 +398,7 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
       </section>
 
       {/* closing */}
-      <section className="mt-7 grid grid-cols-[1fr_60mm] gap-8">
+      <section className="mt-7 grid break-inside-avoid grid-cols-[1fr_60mm] gap-8">
         <div>
           {invoice.notes && (
             <div className="mb-3">
@@ -402,7 +428,7 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
       </section>
 
       <footer className="mt-auto flex justify-between pt-8 text-[9px]" style={{ color: MUTED }}>
-        <span>This is a computer-generated invoice.</span>
+        <span>This is a computer-generated {noun.toLowerCase()}.</span>
         <span>{invoice.invoiceNumber}</span>
       </footer>
     </article>
@@ -413,6 +439,7 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
 export function InvoiceReceipt({ invoice }: { invoice: Invoice }) {
   const shop = invoice.shop;
   const cancelled = invoice.status === "CANCELLED";
+  const isGst = invoice.isGst !== false;
   const due = balanceOf(invoice);
   const qr = useQr(
     shop.upiId && due > 0 && !cancelled ? upiPaymentLink(shop.upiId, shop.name, due, invoice.invoiceNumber) : null
@@ -425,8 +452,8 @@ export function InvoiceReceipt({ invoice }: { invoice: Invoice }) {
         <div className="text-[14px] font-bold">{shop.name}</div>
         {shop.address && <div className="whitespace-pre-line">{shop.address}</div>}
         {shop.phone && <div>Ph: {shop.phone}</div>}
-        {shop.gstin && <div>GSTIN: {shop.gstin}</div>}
-        <div className="mt-1.5 font-bold tracking-wider">{cancelled ? "CANCELLED" : "TAX INVOICE"}</div>
+        {isGst && shop.gstin && <div>GSTIN: {shop.gstin}</div>}
+        <div className="mt-1.5 font-bold tracking-wider">{cancelled ? "CANCELLED" : documentTitle(invoice)}</div>
       </div>
       {rule}
       <div className="flex justify-between">
@@ -448,9 +475,11 @@ export function InvoiceReceipt({ invoice }: { invoice: Invoice }) {
             </span>
             <span>{money.format(item.lineTotal)}</span>
           </div>
-          <div className="text-[9.5px]">
-            HSN {item.hsnCode || "—"} · GST {item.taxPercent}%
-          </div>
+          {isGst && (
+            <div className="text-[9.5px]">
+              HSN {item.hsnCode || "—"} · GST {item.taxPercent}%
+            </div>
+          )}
         </div>
       ))}
       {rule}
@@ -465,10 +494,12 @@ export function InvoiceReceipt({ invoice }: { invoice: Invoice }) {
             <span>−{money.format(invoice.discountTotal)}</span>
           </div>
         )}
-        <div className="flex justify-between">
-          <span>{invoice.isInterState ? "IGST included" : "GST included"}</span>
-          <span>{money.format(invoice.taxTotal)}</span>
-        </div>
+        {isGst && (
+          <div className="flex justify-between">
+            <span>{invoice.isInterState ? "IGST included" : "GST included"}</span>
+            <span>{money.format(invoice.taxTotal)}</span>
+          </div>
+        )}
         {!!invoice.roundOff && (
           <div className="flex justify-between">
             <span>Round off</span>

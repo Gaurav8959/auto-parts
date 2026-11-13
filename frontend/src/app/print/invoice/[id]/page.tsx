@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { InvoiceDocument, InvoiceReceipt } from "@/components/invoice/invoice-document";
 import { Button } from "@/components/ui/button";
 import { get } from "@/lib/api";
@@ -20,6 +20,19 @@ const whenPainted = async () => {
   );
 };
 
+// A4: every printed page gets 10 mm top and bottom, so rows that run onto page 2 don't start at the paper's edge.
+// Receipt: roll paper, one page exactly as long as the receipt (measured just before printing), so a long bill
+// isn't split into pieces and cut in two by the printer.
+const A4_PAGE = "@page { size: A4; margin: 10mm 0; }";
+const receiptPage = (heightMm: number) => `@page { size: 80mm ${heightMm}mm; margin: 0; }`;
+
+const fitPageToReceipt = (style: HTMLStyleElement | null) => {
+  const receipt = document.querySelector(".invoice-receipt");
+  if (!style || !receipt) return;
+  const heightMm = Math.ceil((receipt.getBoundingClientRect().height * 25.4) / 96) + 2;
+  style.textContent = receiptPage(heightMm);
+};
+
 // Print view. Opened directly it shows a preview with a Print button.
 // Opened inside a hidden frame by the invoice page (?autoprint=1) it prints itself and reports back.
 export default function PrintInvoicePage() {
@@ -31,6 +44,11 @@ export default function PrintInvoicePage() {
   const format = params.get("format") === "thermal" ? "thermal" : "a4";
   const copy = (params.get("copy") as InvoiceCopy) || "ORIGINAL";
   const autoprint = params.get("autoprint") === "1";
+  const pageStyle = useRef<HTMLStyleElement>(null);
+  const printNow = () => {
+    if (format === "thermal") fitPageToReceipt(pageStyle.current);
+    window.print();
+  };
 
   const { data: inv, isError } = useQuery({
     queryKey: ["invoice", Number(id)],
@@ -54,6 +72,7 @@ export default function PrintInvoicePage() {
       await whenPainted();
       if (cancelled) return;
       window.parent.postMessage({ type: "ap:print-start", id }, window.location.origin);
+      if (format === "thermal") fitPageToReceipt(pageStyle.current);
       window.print();
     }, 150);
     return () => {
@@ -61,7 +80,7 @@ export default function PrintInvoicePage() {
       clearTimeout(timer);
       window.removeEventListener("afterprint", done);
     };
-  }, [inv, autoprint, id]);
+  }, [inv, autoprint, id, format]);
 
   useEffect(() => {
     if (isError) window.parent.postMessage({ type: "ap:print-done", id }, window.location.origin);
@@ -71,12 +90,12 @@ export default function PrintInvoicePage() {
 
   return (
     <div className="min-h-dvh bg-neutral-200 py-8 print:bg-white print:py-0">
-      <style>{`@page { size: ${format === "thermal" ? "80mm auto" : "A4"}; margin: 0; }`}</style>
+      <style ref={pageStyle}>{format === "thermal" ? receiptPage(297) : A4_PAGE}</style>
       <div className="no-print mx-auto mb-4 flex max-w-[210mm] items-center justify-between gap-2 px-4">
         <span className="text-sm text-neutral-600">
           {format === "thermal" ? "80 mm receipt" : "A4 invoice"} · {inv.invoiceNumber}
         </span>
-        <Button onClick={() => window.print()} className="bg-neutral-900 text-white shadow-none hover:bg-neutral-800">
+        <Button onClick={printNow} className="bg-neutral-900 text-white shadow-none hover:bg-neutral-800">
           <Printer /> Print
         </Button>
       </div>

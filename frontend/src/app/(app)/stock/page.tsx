@@ -32,7 +32,16 @@ type StockSummary = {
   lowStock: number;
 };
 
-const TXN_TYPES = ["OPENING", "PURCHASE", "SALE", "SALE_CANCELLED", "ADJUSTMENT_IN", "ADJUSTMENT_OUT"];
+const TXN_TYPES = [
+  "OPENING",
+  "PURCHASE",
+  "PURCHASE_EDIT",
+  "SALE",
+  "SALE_EDIT",
+  "SALE_CANCELLED",
+  "ADJUSTMENT_IN",
+  "ADJUSTMENT_OUT",
+];
 
 function Stock() {
   const { can } = useAuth();

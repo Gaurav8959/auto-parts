@@ -21,6 +21,7 @@ export type ShopFields = {
   invoiceTerms: string;
   invoicePrefix: string;
   purchasePrefix: string;
+  nonGstPrefix: string;
   bankName: string;
   bankAccountName: string;
   bankAccountNumber: string;
@@ -39,6 +40,7 @@ export const shopToFields = (shop?: Shop | null): ShopFields => ({
   invoiceTerms: shop?.invoiceTerms || "",
   invoicePrefix: shop?.invoicePrefix || "",
   purchasePrefix: shop?.purchasePrefix || "",
+  nonGstPrefix: shop?.nonGstPrefix || "",
   bankName: shop?.bankName || "",
   bankAccountName: shop?.bankAccountName || "",
   bankAccountNumber: shop?.bankAccountNumber || "",
@@ -146,16 +148,33 @@ export function ShopFieldset({
               </Field>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
+          <div className="grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-3">
             <Field
-              label="Invoice prefix"
-              hint={value.invoicePrefix ? `Bills look like ${value.invoicePrefix}-00001` : undefined}
+              label="GST invoice prefix"
+              hint={value.invoicePrefix ? `${value.invoicePrefix}-00001` : undefined}
             >
               <Input
                 value={value.invoicePrefix}
                 onChange={(e) => set("invoicePrefix", upperCode(e.target.value))}
                 className="font-mono"
                 maxLength={10}
+              />
+            </Field>
+            <Field
+              label="Non-GST bill prefix"
+              error={
+                value.nonGstPrefix && value.nonGstPrefix === value.invoicePrefix
+                  ? "Must differ from the GST invoice prefix"
+                  : undefined
+              }
+              hint={value.nonGstPrefix ? `${value.nonGstPrefix}-00001` : undefined}
+            >
+              <Input
+                value={value.nonGstPrefix}
+                onChange={(e) => set("nonGstPrefix", upperCode(e.target.value))}
+                className="font-mono"
+                maxLength={10}
+                placeholder="BILL"
               />
             </Field>
             <Field label="Purchase prefix">
@@ -180,6 +199,7 @@ export const fieldsToBody = (fields: ShopFields, { includeCode = true } = {}) =>
   Object.entries(rest).forEach(([k, v]) => (body[k] = v.trim() === "" ? null : v.trim()));
   if (!body.invoicePrefix) delete body.invoicePrefix;
   if (!body.purchasePrefix) delete body.purchasePrefix;
+  if (!body.nonGstPrefix) delete body.nonGstPrefix;
   if (includeCode && code) body.code = code;
   return body;
 };

@@ -97,10 +97,27 @@ set. To try it without sending anything, set `MAIL_TRANSPORT=log`: each email is
 - **Invoices**: fast keyboard billing (type, ↑/↓, Enter; ⌘/Ctrl+Enter to save). Prices are
   GST-inclusive; tax is carved out per line. Walk-in or saved customers, vehicle number, partial
   payments with payment terms (due date, Overdue filter), "Bill again", cancel (returns stock, and
-  records the refund of anything paid, in the mode it was given back). Issued invoices are never edited.
+  records the refund of anything paid, in the mode it was given back).
 - **GST**: the place of supply is the registered customer's state (from their GSTIN), the shop's own
   state for counter sales, or chosen on the bill. Another state than the shop's means **IGST**;
   otherwise CGST + SGST. The invoice, PDF and GST report follow it.
+- **Editing invoices and purchases**: an issued invoice or a recorded purchase can be edited (Edit button on
+  its page): items, quantities, prices, discounts, customer or supplier details, notes. The number stays the
+  same and stock moves by the difference only. On a purchase the shop's average cost is redone as if it had
+  been entered that way; a quantity can't be cut below what is still in stock. Payments stay as recorded, so a
+  total can't drop below what has been paid. An invoice keeps its kind (GST or not) and date; cancelled
+  invoices can't be edited. Every edit is kept in an *Edit history* on the page (who, when, what changed).
+  Permissions *Edit issued invoices* and *Edit recorded purchases* are on for managers by default.
+- **With and without GST, one stock**: every purchase and every sale is marked *With GST* or *Without GST*
+  (a switch on the purchase and billing screens; each screen remembers the last choice). Both kinds move the
+  same stock and the same average cost.
+  - A purchase without GST is taken at 0%: the price paid is the cost. With GST the cost is before tax.
+  - A sale without GST carries no tax, prints as a plain **BILL** (no GSTIN, HSN or GST columns) and is
+    numbered in its own series (shop setting *Non-GST bill prefix*, default `BILL`), so the GST invoice
+    series stays unbroken.
+  - Reports split sales and purchases into with/without GST. *GST on sales* counts GST invoices only;
+    *GST on purchases* shows input tax from supplier bills with GST.
+  - Billing without GST is a permission (*Make bills without GST*), on for managers by default.
 - **The invoice document**: each invoice page shows the actual GST tax invoice the customer gets: shop
   logo, seller/buyer GSTIN, HSN, per-line taxable value and GST, CGST/SGST summary, amount in words,
   bank details, a **UPI QR code for the balance due**, terms, signature, Original/Duplicate copy label.

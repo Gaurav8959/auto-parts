@@ -4,7 +4,8 @@ node_modules/
 # builds
 dist/
 .next/
-.next-demo/
+# extra builds next to the normal one (demo, test copies)
+.next-*/
 out/
 build/
 *.tsbuildinfo

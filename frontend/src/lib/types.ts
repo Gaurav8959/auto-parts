@@ -2,7 +2,15 @@ export type Role = "ADMIN" | "MANAGER";
 export type PaymentStatus = "UNPAID" | "PARTIAL" | "PAID";
 export type PaymentMode = "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "CHEQUE";
 export type InvoiceStatus = "ISSUED" | "CANCELLED";
-export type StockTxnType = "OPENING" | "PURCHASE" | "SALE" | "SALE_CANCELLED" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT";
+export type StockTxnType =
+  | "OPENING"
+  | "PURCHASE"
+  | "SALE"
+  | "SALE_CANCELLED"
+  | "ADJUSTMENT_IN"
+  | "ADJUSTMENT_OUT"
+  | "SALE_EDIT"
+  | "PURCHASE_EDIT";
 
 export const PAYMENT_MODES: PaymentMode[] = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "CHEQUE"];
 
@@ -27,6 +35,8 @@ export type Shop = ShopRef & {
   invoiceTerms?: string | null;
   invoicePrefix: string;
   purchasePrefix: string;
+  // bills without GST have their own number series
+  nonGstPrefix: string;
   // only on an invoice's shop; elsewhere logos come from useLogos()
   logo?: string | null;
   bankName?: string | null;
@@ -121,6 +131,14 @@ export type Payment = {
   createdBy?: User;
 };
 
+// One edit of an invoice or purchase: who, when, and what changed (readable lines)
+export type Revision = {
+  id: number;
+  changes: string[];
+  createdAt: string;
+  createdBy?: Pick<User, "id" | "firstName" | "lastName">;
+};
+
 export type PurchaseItem = {
   id: number;
   productName: string;
@@ -139,6 +157,8 @@ export type Purchase = {
   purchaseNumber: string;
   supplierBillNo?: string | null;
   purchaseDate: string;
+  // false = a supplier bill without GST (no tax; the price paid is the cost)
+  isGst: boolean;
   supplier: Party;
   subTotal: number;
   taxTotal: number;
@@ -149,6 +169,8 @@ export type Purchase = {
   items?: PurchaseItem[];
   payments?: Payment[];
   createdBy?: User;
+  // edit history, newest first
+  revisions?: Revision[];
 };
 
 export type InvoiceItem = {
@@ -175,6 +197,8 @@ export type Invoice = {
   shop: Shop;
   invoiceNumber: string;
   invoiceDate: string;
+  // false = a bill without GST: no tax, printed as a plain bill, numbered in its own series
+  isGst: boolean;
   customer?: Party | null;
   customerName: string;
   customerPhone?: string | null;
@@ -203,6 +227,8 @@ export type Invoice = {
   payments?: Payment[];
   emails?: InvoiceEmail[];
   createdBy?: User;
+  // edit history, newest first
+  revisions?: Revision[];
 };
 
 export type InvoiceEmail = {

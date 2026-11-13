@@ -51,7 +51,12 @@ export const isoDay = (d: Date = new Date()) => {
 };
 
 // Acronyms that shouldn't be title-cased
-const LABELS: Record<string, string> = { UPI: "UPI", GST: "GST" };
+const LABELS: Record<string, string> = {
+  UPI: "UPI",
+  GST: "GST",
+  SALE_EDIT: "Invoice edited",
+  PURCHASE_EDIT: "Purchase edited",
+};
 
 export const label = (value?: string | null) =>
   value && LABELS[value]

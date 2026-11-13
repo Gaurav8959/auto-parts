@@ -19,7 +19,9 @@ export const metadata: Metadata = {
   description: "Inventory, stock and billing for the shop",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Props typed by hand: Next's generated LayoutProps only exists after the first dev/build run,
+// so a fresh checkout (and CI's type check) wouldn't know it
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     // data-theme is set by the inline script before hydration, so React must not complain about it
     <html

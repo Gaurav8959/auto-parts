@@ -48,11 +48,14 @@ export const downloadFile = (file: File) => {
 
 const money = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// a bill made without GST is a "bill", not an "invoice"
+const noun = (invoice: Invoice) => (invoice.isGst === false ? "bill" : "invoice");
+
 export const invoiceSummaryText = (invoice: Invoice) => {
   const due = Math.round((invoice.grandTotal - invoice.paidAmount) * 100) / 100;
   return [
     `Hi ${invoice.customerName},`,
-    `Your invoice ${invoice.invoiceNumber} from ${invoice.shop.name}:`,
+    `Your ${noun(invoice)} ${invoice.invoiceNumber} from ${invoice.shop.name}:`,
     `Total ₹${money.format(invoice.grandTotal)}`,
     due > 0 ? `Balance due ₹${money.format(due)}` : "Paid in full. Thank you!",
     invoice.shop.upiId && due > 0 ? `Pay by UPI: ${invoice.shop.upiId}` : null,
@@ -68,14 +71,15 @@ export const whatsappLink = (invoice: Invoice) => {
   return `https://wa.me/${phone}?text=${encodeURIComponent(invoiceSummaryText(invoice))}`;
 };
 
-export const defaultEmailSubject = (invoice: Invoice) => `Invoice ${invoice.invoiceNumber} from ${invoice.shop.name}`;
+export const defaultEmailSubject = (invoice: Invoice) =>
+  `${invoice.isGst === false ? "Bill" : "Invoice"} ${invoice.invoiceNumber} from ${invoice.shop.name}`;
 
 export const defaultEmailMessage = (invoice: Invoice) => {
   const due = Math.round((invoice.grandTotal - invoice.paidAmount) * 100) / 100;
   const lines = [
     `Hi ${invoice.customerName},`,
     "",
-    `Thank you for your purchase. Please find invoice ${invoice.invoiceNumber} for ₹${money.format(invoice.grandTotal)} attached.`,
+    `Thank you for your purchase. Please find ${noun(invoice)} ${invoice.invoiceNumber} for ₹${money.format(invoice.grandTotal)} attached.`,
   ];
   if (due > 0) {
     const by = invoice.dueDate

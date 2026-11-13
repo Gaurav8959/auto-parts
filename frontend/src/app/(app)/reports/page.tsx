@@ -20,6 +20,11 @@ type SalesReport = {
   summary: {
     invoiceCount: number;
     sales: number;
+    // GST invoices and bills without GST
+    gstCount: number;
+    gstSales: number;
+    nonGstCount: number;
+    nonGstSales: number;
     tax: number;
     discount: number;
     cost?: number;
@@ -27,6 +32,8 @@ type SalesReport = {
     due: number;
     purchaseCount: number;
     purchaseTotal: number;
+    gstPurchaseTotal: number;
+    nonGstPurchaseTotal: number;
   };
   daily: { day: string; invoiceCount: number; sales: number; tax: number; profit?: number }[];
   topProducts: { productId: number; name: string; sku: string; quantity: number; sales: number; profit?: number }[];
@@ -47,6 +54,8 @@ type SalesReport = {
 };
 
 type GstRow = { taxPercent: number; taxable: number; cgst: number; sgst: number; igst: number; tax: number };
+// GST paid on purchases with GST
+type GstInputRow = { taxPercent: number; taxable: number; tax: number };
 
 const daysAgo = (n: number) => {
   const d = new Date();
@@ -80,6 +89,10 @@ function Reports() {
   const { data: gst = [] } = useQuery({
     queryKey: ["report", "gst", range],
     queryFn: () => get<GstRow[]>("/report/gst", range),
+  });
+  const { data: gstInput = [] } = useQuery({
+    queryKey: ["report", "gst-input", range],
+    queryFn: () => get<GstInputRow[]>("/report/gst-input", range),
   });
 
   const showProfit = data?.summary.profit !== undefined;
@@ -170,7 +183,7 @@ function Reports() {
           icon={<Landmark />}
           tone="neutral"
           value={inr(data?.summary.tax)}
-          hint={gst.some((g) => g.igst) ? "CGST + SGST + IGST" : "CGST + SGST"}
+          hint={`On GST invoices · ${gst.some((g) => g.igst) ? "CGST + SGST + IGST" : "CGST + SGST"}`}
         />
         <Stat
           label="Purchases"
@@ -228,6 +241,41 @@ function Reports() {
 
         <div className="space-y-4 lg:col-span-2">
           <Card>
+            <CardHeader title="With and without GST" description="One stock; tax only on the GST side" />
+            <Table>
+              <thead>
+                <tr>
+                  <Th />
+                  <Th align="right">With GST</Th>
+                  <Th align="right">Without GST</Th>
+                </tr>
+              </thead>
+              <tbody>
+                <Tr>
+                  <Td className="text-fg-2">Sales</Td>
+                  <Td align="right">
+                    <div className="font-medium">{inr(data?.summary.gstSales)}</div>
+                    <div className="text-xs text-fg-3">{plural(data?.summary.gstCount, "invoice")}</div>
+                  </Td>
+                  <Td align="right">
+                    <div className="font-medium">{inr(data?.summary.nonGstSales)}</div>
+                    <div className="text-xs text-fg-3">{plural(data?.summary.nonGstCount, "bill")}</div>
+                  </Td>
+                </Tr>
+                <Tr>
+                  <Td className="text-fg-2">Purchases</Td>
+                  <Td align="right" className="font-medium">
+                    {inr(data?.summary.gstPurchaseTotal)}
+                  </Td>
+                  <Td align="right" className="font-medium">
+                    {inr(data?.summary.nonGstPurchaseTotal)}
+                  </Td>
+                </Tr>
+              </tbody>
+            </Table>
+          </Card>
+
+          <Card>
             <CardHeader
               title="Payments received"
               description={refundTotal ? `${inr(paymentTotal)} after ${inr(refundTotal)} refunded` : inr(paymentTotal)}
@@ -261,9 +309,11 @@ function Reports() {
 
           <Card>
             <CardHeader
-              title="GST summary"
+              title="GST on sales"
               description={
-                hasIgst ? "CGST + SGST within the state, IGST on sales to other states" : "Split equally into CGST and SGST"
+                hasIgst
+                  ? "GST invoices only. CGST + SGST within the state, IGST to other states"
+                  : "GST invoices only, split equally into CGST and SGST"
               }
             />
             <Table>
@@ -291,6 +341,36 @@ function Reports() {
                       <Td align="right">{inr(g.cgst)}</Td>
                       <Td align="right">{inr(g.sgst)}</Td>
                       {hasIgst && <Td align="right">{inr(g.igst)}</Td>}
+                    </Tr>
+                  ))
+                )}
+              </tbody>
+            </Table>
+          </Card>
+
+          <Card>
+            <CardHeader title="GST on purchases" description="Input tax on supplier bills with GST" />
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Rate</Th>
+                  <Th align="right">Taxable</Th>
+                  <Th align="right">GST paid</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {gstInput.length === 0 ? (
+                  <tr>
+                    <Td colSpan={3} className="text-[13px] text-fg-3">
+                      No purchases with GST.
+                    </Td>
+                  </tr>
+                ) : (
+                  gstInput.map((g) => (
+                    <Tr key={g.taxPercent}>
+                      <Td>{g.taxPercent}%</Td>
+                      <Td align="right">{inr(g.taxable)}</Td>
+                      <Td align="right">{inr(g.tax)}</Td>
                     </Tr>
                   ))
                 )}

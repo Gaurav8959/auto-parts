@@ -22,6 +22,7 @@ import type { Invoice } from "@/lib/types";
 import { useShopScope } from "@/lib/shop";
 import { ShopBadge } from "@/components/layout/shop-switcher";
 import { isOverdue } from "@/components/invoice/invoice-document";
+import { GstBadge } from "@/components/gst-mode";
 
 function Invoices() {
   const router = useRouter();
@@ -31,7 +32,7 @@ function Invoices() {
   const customerId = params.get("customerId") || "";
   const customerName = params.get("customerName");
 
-  const [filters, setFilters] = useState({ keyword: "", paymentStatus: "", status: "", from: "", to: "", page: 1 });
+  const [filters, setFilters] = useState({ keyword: "", paymentStatus: "", status: "", gst: "", from: "", to: "", page: 1 });
   const setFilter = (key: keyof typeof filters, value: string) => setFilters((f) => ({ ...f, [key]: value, page: 1 }));
 
   const { data, isLoading } = useQuery({
@@ -98,6 +99,11 @@ function Invoices() {
             <option value="ISSUED">Issued</option>
             <option value="CANCELLED">Cancelled</option>
           </Select>
+          <Select value={filters.gst} onChange={(e) => setFilter("gst", e.target.value)} className="w-auto">
+            <option value="">GST & non-GST</option>
+            <option value="true">GST invoices</option>
+            <option value="false">Bills without GST</option>
+          </Select>
           <div className="flex items-center gap-1.5">
             <Input
               type="date"
@@ -150,7 +156,12 @@ function Invoices() {
                     onClick={() => router.push(`/invoices/${inv.id}`)}
                     className={cancelled ? "opacity-60" : ""}
                   >
-                    <Td className="font-mono text-[13px] font-medium">{inv.invoiceNumber}</Td>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[13px] font-medium">{inv.invoiceNumber}</span>
+                        <GstBadge isGst={inv.isGst} />
+                      </div>
+                    </Td>
                     {isAll && (
                       <Td>
                         <ShopBadge shop={inv.shop} />

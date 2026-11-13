@@ -21,6 +21,7 @@ import { P } from "@/lib/permissions";
 import type { Purchase } from "@/lib/types";
 import { useShopScope } from "@/lib/shop";
 import { ShopBadge } from "@/components/layout/shop-switcher";
+import { GstBadge } from "@/components/gst-mode";
 
 function Purchases() {
   const router = useRouter();
@@ -30,7 +31,7 @@ function Purchases() {
   const supplierId = params.get("supplierId") || "";
   const supplierName = params.get("supplierName");
 
-  const [filters, setFilters] = useState({ keyword: "", paymentStatus: "", from: "", to: "", page: 1 });
+  const [filters, setFilters] = useState({ keyword: "", paymentStatus: "", gst: "", from: "", to: "", page: 1 });
   const setFilter = (key: keyof typeof filters, value: string) => setFilters((f) => ({ ...f, [key]: value, page: 1 }));
 
   const { data, isLoading } = useQuery({
@@ -77,6 +78,11 @@ function Purchases() {
             <option value="PAID">Paid</option>
             <option value="PARTIAL">Partly paid</option>
             <option value="UNPAID">Unpaid</option>
+          </Select>
+          <Select value={filters.gst} onChange={(e) => setFilter("gst", e.target.value)} className="w-auto">
+            <option value="">GST & non-GST</option>
+            <option value="true">With GST</option>
+            <option value="false">Without GST</option>
           </Select>
           <div className="flex items-center gap-1.5">
             <Input
@@ -125,7 +131,10 @@ function Purchases() {
               data.data.map((p) => (
                 <Tr key={p.id} onClick={() => router.push(`/purchases/${p.id}`)}>
                   <Td>
-                    <div className="font-mono text-[13px] font-medium">{p.purchaseNumber}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[13px] font-medium">{p.purchaseNumber}</span>
+                      <GstBadge isGst={p.isGst} />
+                    </div>
                     {p.supplierBillNo && <div className="text-xs text-fg-3">Bill {p.supplierBillNo}</div>}
                   </Td>
                   {isAll && (

@@ -21,6 +21,8 @@ const typeTone: Record<string, "success" | "danger" | "neutral" | "accent" | "wa
   SALE_CANCELLED: "warning",
   ADJUSTMENT_IN: "success",
   ADJUSTMENT_OUT: "danger",
+  SALE_EDIT: "warning",
+  PURCHASE_EDIT: "warning",
 };
 
 const referenceHref = (t: StockTxn) => {

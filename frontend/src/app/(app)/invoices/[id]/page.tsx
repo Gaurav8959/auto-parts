@@ -13,6 +13,7 @@ import {
   Mail,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Printer,
   Receipt,
   Repeat2,
@@ -26,6 +27,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { EmailInvoiceDialog } from "@/components/invoice/email-invoice-dialog";
+import { GstBadge } from "@/components/gst-mode";
+import { EditHistory } from "@/components/edit-history";
 import {
   downloadFile,
   fetchInvoicePdf,
@@ -169,7 +172,7 @@ function InvoiceDetail() {
     try {
       const file = await fetchInvoicePdf(inv);
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: `Invoice ${inv.invoiceNumber}`, text: invoiceSummaryText(inv) });
+        await navigator.share({ files: [file], title: `${inv.isGst === false ? "Bill" : "Invoice"} ${inv.invoiceNumber}`, text: invoiceSummaryText(inv) });
       } else {
         downloadFile(file);
         toast.message("PDF downloaded", {
@@ -194,6 +197,7 @@ function InvoiceDetail() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="font-mono text-2xl font-semibold tracking-tight">{inv.invoiceNumber}</h1>
+            <GstBadge isGst={inv.isGst} />
             {cancelled ? <Badge tone="danger">Cancelled</Badge> : <PaymentBadge status={inv.paymentStatus} />}
             {overdue && <Badge tone="danger">Overdue</Badge>}
           </div>
@@ -211,8 +215,8 @@ function InvoiceDetail() {
             loading={busy === "print"}
             items={[
               {
-                label: "Print invoice",
-                description: "A4 tax invoice",
+                label: inv.isGst === false ? "Print bill" : "Print invoice",
+                description: inv.isGst === false ? "A4 bill, without GST" : "A4 tax invoice",
                 icon: <FileText />,
                 onSelect: () => print("a4"),
               },
@@ -232,6 +236,11 @@ function InvoiceDetail() {
           >
             <Printer /> Print
           </DropdownButton>
+          {can(P.INVOICE_EDIT) && !cancelled && (
+            <Button variant="secondary" onClick={() => router.push(`/invoices/${inv.id}/edit`)}>
+              <Pencil /> Edit
+            </Button>
+          )}
           <Button variant="secondary" onClick={downloadPdf} loading={busy === "pdf"}>
             <Download /> PDF
           </Button>
@@ -352,7 +361,7 @@ function InvoiceDetail() {
             )}
             {profit !== null && !cancelled && (
               <div className="mt-4 flex justify-between border-t border-border pt-3 text-[13px]">
-                <span className="text-fg-3">Profit (before GST)</span>
+                <span className="text-fg-3">{inv.isGst === false ? "Profit" : "Profit (before GST)"}</span>
                 <span className={cn("font-medium tabular", profit < 0 && "text-danger")}>{inr(profit)}</span>
               </div>
             )}
@@ -394,6 +403,8 @@ function InvoiceDetail() {
               ))}
             </ol>
           </Card>
+
+          <EditHistory revisions={inv.revisions} />
         </div>
       </div>
 

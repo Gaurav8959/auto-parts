@@ -75,8 +75,11 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
       : null;
 
   // ---------------- header ----------------
+  // the logo stands for the shop's name; without one, the name is written out
   const shopLines: Content[] = [
-    { text: shop.name, fontSize: 15, bold: true, color: INK },
+    isImage(shop.logo)
+      ? { image: shop.logo, fit: [170, 48] as [number, number], margin: [0, 0, 0, 4] }
+      : { text: shop.name, fontSize: 15, bold: true, color: INK },
     shop.tagline ? { text: shop.tagline, fontSize: 8.5, color: MUTED, margin: [0, 1, 0, 0] } : null,
     shop.address ? { text: shop.address, fontSize: 8.5, color: MUTED, margin: [0, 5, 0, 0] } : null,
     [shop.phone, shop.email].filter(Boolean).length
@@ -95,7 +98,6 @@ export const invoicePdfDefinition = async (invoice: Invoice, copy: TInvoiceCopy)
 
   const header: Content = {
     columns: [
-      ...(isImage(shop.logo) ? [{ image: shop.logo, fit: [52, 52] as [number, number], width: 60 }] : []),
       { stack: shopLines, width: "*" },
       {
         width: 170,

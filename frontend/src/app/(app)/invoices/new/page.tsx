@@ -12,8 +12,9 @@ import type { Invoice, Product } from "@/lib/types";
 
 // ?from=<invoice id> starts a new bill with the same customer and items, at today's prices and stock
 function BillAgain({ fromId }: { fromId: string }) {
+  const prefillKey = ["bill-again", fromId];
   const { data: prefill, isError } = useQuery({
-    queryKey: ["bill-again", fromId],
+    queryKey: prefillKey,
     queryFn: async (): Promise<InvoicePrefill> => {
       const source = await get<Invoice>(`/invoice/${fromId}`);
       const products = await Promise.all(
@@ -52,7 +53,7 @@ function BillAgain({ fromId }: { fromId: string }) {
       <div className="mb-4 rounded-xl border border-accent/20 bg-accent-soft px-4 py-2.5 text-[13px] text-accent">
         Copied from {prefill.sourceNumber} at today&apos;s prices. Items out of stock were left out.
       </div>
-      <InvoiceForm prefill={prefill} />
+      <InvoiceForm prefill={prefill} prefillKey={prefillKey} />
     </>
   );
 }

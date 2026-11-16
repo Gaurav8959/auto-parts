@@ -93,27 +93,31 @@ export function InvoiceDocument({ invoice, copy = "ORIGINAL" }: { invoice: Invoi
 
       {/* header */}
       <header className="flex items-start justify-between gap-6">
-        <div className="flex min-w-0 gap-4">
-          {shop.logo && (
+        <div className="min-w-0">
+          {/* the logo stands for the shop's name; without one, the name is written out */}
+          {shop.logo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={shop.logo} alt="" className="size-[58px] shrink-0 object-contain" />
-          )}
-          <div className="min-w-0">
+            <img
+              src={shop.logo}
+              alt={shop.name}
+              className="mb-1.5 block h-auto max-h-[64px] w-auto max-w-[60mm] object-contain object-left"
+            />
+          ) : (
             <div className="text-[20px] leading-tight font-semibold tracking-tight">{shop.name}</div>
-            {shop.tagline && <div style={{ color: MUTED }}>{shop.tagline}</div>}
-            {shop.address && (
-              <div className="mt-1.5 max-w-[78mm] whitespace-pre-line" style={{ color: MUTED }}>
-                {shop.address}
-              </div>
-            )}
-            <div style={{ color: MUTED }}>{[shop.phone, shop.email].filter(Boolean).join("  ·  ")}</div>
-            {isGst && shop.gstin && (
-              <div className="mt-1">
-                <span style={{ color: MUTED }}>GSTIN </span>
-                <span className="font-semibold tracking-wide">{shop.gstin}</span>
-              </div>
-            )}
-          </div>
+          )}
+          {shop.tagline && <div style={{ color: MUTED }}>{shop.tagline}</div>}
+          {shop.address && (
+            <div className="mt-1.5 max-w-[78mm] whitespace-pre-line" style={{ color: MUTED }}>
+              {shop.address}
+            </div>
+          )}
+          <div style={{ color: MUTED }}>{[shop.phone, shop.email].filter(Boolean).join("  ·  ")}</div>
+          {isGst && shop.gstin && (
+            <div className="mt-1">
+              <span style={{ color: MUTED }}>GSTIN </span>
+              <span className="font-semibold tracking-wide">{shop.gstin}</span>
+            </div>
+          )}
         </div>
         <div className="w-[62mm] shrink-0 text-right">
           <div className="text-[18px] font-bold tracking-[0.06em]" style={{ color: cancelled ? "#d02d2a" : BRAND }}>

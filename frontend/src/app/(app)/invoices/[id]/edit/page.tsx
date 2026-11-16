@@ -23,8 +23,9 @@ const skeleton = <div className="h-96 animate-pulse rounded-xl border border-bor
 
 // The issued invoice, as the billing screen's starting point
 function EditForm({ invoice }: { invoice: Invoice }) {
+  const prefillKey = ["invoice-edit", invoice.id];
   const { data: prefill, isError } = useQuery({
-    queryKey: ["invoice-edit", invoice.id],
+    queryKey: prefillKey,
     staleTime: 0,
     queryFn: async (): Promise<InvoicePrefill> => {
       const items = invoice.items || [];
@@ -101,7 +102,7 @@ function EditForm({ invoice }: { invoice: Invoice }) {
     paidAmount: Number(invoice.paidAmount),
     dueDate: invoice.dueDate,
   };
-  return <InvoiceForm prefill={prefill} editing={editing} />;
+  return <InvoiceForm prefill={prefill} prefillKey={prefillKey} editing={editing} />;
 }
 
 function EditInvoice() {

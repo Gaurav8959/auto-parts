@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { P } from "@/lib/permissions";
 import type { Brand, Category, DiscountType, Product, ShopSettings } from "@/lib/types";
 import { inr, num } from "@/lib/format";
-import { convertDiscount, discountProblem, mrpDiscount } from "@/lib/discount";
+import { convertDiscount, discountOff, discountProblem } from "@/lib/discount";
 import { DiscountUnitSwitch } from "./discount-unit-switch";
 import { Button } from "./ui/button";
 import { Sheet } from "./ui/dialog";
@@ -26,7 +26,9 @@ type FormState = {
   unit: string;
   hsnCode: string;
   taxPercent: string;
-  purchasePrice: string;
+  // what the part costs with GST added (MRP − discount + GST). Saved before GST, which is how the rest
+  // of the app counts cost: margin, profit and average cost all leave GST out.
+  purchaseCost: string;
   sellingPrice: string;
   mrp: string;
   mrpDiscountType: DiscountType;
@@ -41,6 +43,8 @@ type FormState = {
 const UNITS = ["PCS", "SET", "PAIR", "KIT", "LTR", "ML", "KG", "MTR", "BOX"];
 const TAX_RATES = ["0", "5", "12", "18", "28"];
 
+const withGst = (value: number, taxPercent: number) => Math.round(value * (1 + taxPercent / 100) * 100) / 100;
+
 const fromProduct = (p?: Product | null, defaultTax = 18, defaultReorder = 5): FormState => ({
   sku: p?.sku || "",
   partNumber: p?.partNumber || "",
@@ -51,7 +55,8 @@ const fromProduct = (p?: Product | null, defaultTax = 18, defaultReorder = 5): F
   unit: p?.unit || "PCS",
   hsnCode: p?.hsnCode || "",
   taxPercent: String(p?.taxPercent ?? defaultTax),
-  purchasePrice: p?.purchasePrice !== undefined ? String(p.purchasePrice) : "",
+  purchaseCost:
+    p?.purchasePrice !== undefined ? String(withGst(Number(p.purchasePrice), Number(p.taxPercent ?? defaultTax))) : "",
   sellingPrice: p ? String(p.sellingPrice) : "",
   mrp: p?.mrp ? String(p.mrp) : "",
   mrpDiscountType: p?.mrpDiscountType || "PERCENT",
@@ -107,14 +112,21 @@ export function ProductForm({
 
   // Discount on MRP: entered in % or ₹, only once there's an MRP for it to come off
   const mrpValue = Number(form.mrp) || 0;
-  const discountValue = Number(form.mrpDiscount) || 0;
   const discountIssue =
     mrpValue > 0 ? discountProblem(mrpValue, form.mrpDiscountType, form.mrpDiscount, "MRP") : undefined;
-  const offer = discountIssue ? null : mrpDiscount(mrpValue, form.mrpDiscountType, discountValue);
-  // The MRP box shows the MRP after discount, updating as the discount is typed. The MRP itself is
-  // kept as entered (that's what gets saved), and focusing the box brings it back to edit.
-  const [editingMrp, setEditingMrp] = useState(false);
-  const discounted = !editingMrp && !!offer && offer.off > 0;
+  // Purchase cost follows MRP less its discount as either is typed (MRP ₹10, discount ₹2: cost ₹8). It only
+  // changes when the MRP or the discount does, so a cost typed over it afterwards, or a saved one, stays put.
+  const withCost = (f: FormState): FormState => {
+    const mrp = Number(f.mrp) || 0;
+    if (!canCost || mrp <= 0 || discountProblem(mrp, f.mrpDiscountType, f.mrpDiscount, "MRP")) return f;
+    const off = discountOff(mrp, f.mrpDiscountType, Number(f.mrpDiscount));
+    return off > 0 ? { ...f, purchaseCost: String(withGst(mrp - off, Number(f.taxPercent) || 0)) } : f;
+  };
+  const setMrp = (patch: Partial<Pick<FormState, "mrp" | "mrpDiscount">>) =>
+    setForm((f) => withCost({ ...f, ...patch }));
+  // the cost before GST, which is what's saved (₹1,845.05 at 18% is ₹1,563.60 before GST)
+  const gstRate = Number(form.taxPercent) || 0;
+  const costBeforeGst = Math.round(((Number(form.purchaseCost) || 0) / (1 + gstRate / 100)) * 100) / 100;
   const setDiscountType = (to: DiscountType) =>
     setForm((f) =>
       f.mrpDiscountType === to
@@ -164,7 +176,7 @@ export function ProductForm({
       unit: form.unit,
       hsnCode: form.hsnCode.trim() || null,
       taxPercent: Number(form.taxPercent),
-      ...(canCost && { purchasePrice: n(form.purchasePrice) ?? 0 }),
+      ...(canCost && { purchasePrice: form.purchaseCost === "" ? 0 : costBeforeGst }),
       sellingPrice: Number(form.sellingPrice),
       mrp: mrp ?? null,
       mrpDiscountType: discount ? form.mrpDiscountType : null,
@@ -178,8 +190,8 @@ export function ProductForm({
   };
 
   const margin =
-    canCost && Number(form.sellingPrice) > 0 && Number(form.purchasePrice) > 0
-      ? Number(form.sellingPrice) / (1 + Number(form.taxPercent) / 100) - Number(form.purchasePrice)
+    canCost && Number(form.sellingPrice) > 0 && costBeforeGst > 0
+      ? Number(form.sellingPrice) / (1 + gstRate / 100) - costBeforeGst
       : null;
 
   return (
@@ -270,31 +282,26 @@ export function ProductForm({
                 className="tabular"
               />
             </Field>
-            <Field
-              label="MRP"
-              hint={
-                discounted
-                  ? `${inr(offer.mrp)} before ${form.mrpDiscountType === "PERCENT" ? `${num(offer.percent)}%` : inr(offer.off)} off`
-                  : editingMrp && offer && offer.off > 0
-                    ? "Before discount"
-                    : undefined
-              }
-            >
+            <Field label="MRP">
               <Input
                 type="number"
                 min="0"
                 step="0.01"
-                value={discounted ? String(offer.net) : form.mrp}
-                onFocus={() => setEditingMrp(true)}
-                onBlur={() => setEditingMrp(false)}
-                onChange={(e) => set("mrp", e.target.value)}
+                value={form.mrp}
+                onChange={(e) => setMrp({ mrp: e.target.value })}
                 className="tabular"
               />
             </Field>
             <Field
               label="Discount on MRP"
               error={discountIssue}
-              hint={mrpValue > 0 ? "Shown while billing, not printed" : "Add an MRP first"}
+              hint={
+                mrpValue <= 0
+                  ? "Add an MRP first"
+                  : canCost
+                    ? "Taken off MRP for the purchase cost"
+                    : "Shown while billing, not printed"
+              }
             >
               <div className="flex gap-1.5">
                 <Input
@@ -304,7 +311,7 @@ export function ProductForm({
                   value={form.mrpDiscount}
                   disabled={mrpValue <= 0}
                   aria-invalid={!!discountIssue}
-                  onChange={(e) => set("mrpDiscount", e.target.value)}
+                  onChange={(e) => setMrp({ mrpDiscount: e.target.value })}
                   placeholder="0"
                   className="min-w-0 tabular"
                 />
@@ -316,19 +323,28 @@ export function ProductForm({
               </div>
             </Field>
             {canCost && (
-              <Field label="Purchase cost ( Rate )" hint="Excluding GST">
+              <Field
+                label="Purchase cost ( Rate )"
+                hint={
+                  costBeforeGst > 0 && gstRate > 0 ? `${inr(costBeforeGst)} + ${num(gstRate)}% GST` : "Including GST"
+                }
+              >
                 <Input
                   type="number"
                   min="0"
                   step="0.01"
-                  value={form.purchasePrice}
-                  onChange={(e) => set("purchasePrice", e.target.value)}
+                  value={form.purchaseCost}
+                  onChange={(e) => set("purchaseCost", e.target.value)}
                   className="tabular"
                 />
               </Field>
             )}
             <Field label="GST rate">
-              <Select value={form.taxPercent} onChange={(e) => set("taxPercent", e.target.value)}>
+              <Select
+                value={form.taxPercent}
+                // the purchase cost carries GST, so it follows a change of rate when it comes from MRP − discount
+                onChange={(e) => setForm((f) => withCost({ ...f, taxPercent: e.target.value }))}
+              >
                 {Array.from(new Set([...TAX_RATES, form.taxPercent])).map((r) => (
                   <option key={r} value={r}>
                     {r}%

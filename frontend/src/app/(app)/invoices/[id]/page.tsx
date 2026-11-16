@@ -131,6 +131,8 @@ function InvoiceDetail() {
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["stock"] });
       setCancelOpen(false);
+      setReason("");
+      setRefundMode("");
     },
     onError: (e) => toast.error(errorMessage(e)),
   });

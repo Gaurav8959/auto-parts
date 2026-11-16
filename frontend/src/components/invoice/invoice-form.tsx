@@ -105,7 +105,17 @@ function NumberCell({
 }
 
 // Billing screen: a new invoice, or (with `editing`) changes to an issued one
-export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?: InvoiceEditing }) {
+// `prefillKey`: the query the prefill came from (an edit, or "Bill again"). Once saved it is dropped,
+// so the screen builds its starting point again from the server next time.
+export function InvoiceForm({
+  prefill,
+  prefillKey,
+  editing,
+}: {
+  prefill?: Prefill;
+  prefillKey?: readonly unknown[];
+  editing?: InvoiceEditing;
+}) {
   const router = useRouter();
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -148,14 +158,20 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
   // "" = automatic: the registered customer's state, else the shop's own state
   const [placeOfSupply, setPlaceOfSupply] = useState(prefill?.placeOfSupply || "");
 
-  // Creating a bill navigates to it, but Cache Components keeps this page alive in the background
-  // with everything still filled in. Once a bill is created, clear the form as the page is hidden,
-  // so the next "New invoice" starts empty (and the form doesn't flash blank before the navigation).
+  // Saving navigates to the bill, but Cache Components keeps this page alive in the background with
+  // everything still filled in. Once saved, the form is reset as the page is hidden (so it doesn't flash
+  // before the navigation): "New invoice" starts empty, and "Edit" or "Bill again" builds afresh.
   const resetOnHide = useRef(false);
+  const isEditing = !!editing;
+  // compared by value: a new array each render must not count as a change
+  const prefillKeyJson = prefillKey ? JSON.stringify(prefillKey) : null;
   useLayoutEffect(
     () => () => {
       if (!resetOnHide.current) return;
       resetOnHide.current = false;
+      // the screen that filled this form fetches again and starts a new form from the server
+      if (prefillKeyJson) qc.removeQueries({ queryKey: JSON.parse(prefillKeyJson), exact: true });
+      if (isEditing) return;
       setModeOverride(null);
       setLines([]);
       setCustomerId("");
@@ -171,7 +187,7 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
       setNotes("");
       setPlaceOfSupply("");
     },
-    []
+    [qc, prefillKeyJson, isEditing]
   );
 
   const { data: customers = [] } = useQuery({
@@ -267,6 +283,7 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
       if (editing) {
         toast.success(`${noun} ${invoice.invoiceNumber} updated`);
         qc.setQueryData(["invoice", invoice.id], invoice);
+        resetOnHide.current = true;
       } else {
         toast.success(`${noun} ${invoice.invoiceNumber} created`, {
           action: { label: "Print", onClick: () => window.open(`/print/invoice/${invoice.id}`, "_blank") },

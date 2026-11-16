@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PackageSearch, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProductPicker } from "@/components/product-picker";
 import { Button } from "@/components/ui/button";
@@ -60,7 +60,17 @@ const cell =
   "h-8 w-full rounded-md border border-border bg-surface px-2 text-right text-sm tabular focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-[var(--ring)] aria-invalid:border-danger";
 
 // Record a supplier bill, or (with `editing`) change a recorded one
-export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; editing?: PurchaseEditing }) {
+// `prefillKey`: the query the prefill came from (an edit). Once saved it is dropped, so the edit screen
+// builds its starting point again from the server next time.
+export function PurchaseForm({
+  prefill,
+  prefillKey,
+  editing,
+}: {
+  prefill?: PurchasePrefill;
+  prefillKey?: readonly unknown[];
+  editing?: PurchaseEditing;
+}) {
   const router = useRouter();
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -80,6 +90,30 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
   const [paidAmount, setPaidAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("BANK_TRANSFER");
   const [notes, setNotes] = useState(prefill?.notes || "");
+
+  // Saving navigates to the purchase, but Cache Components keeps this page alive in the background with
+  // everything still filled in. Once saved, the form is reset as the page is hidden (so it doesn't flash
+  // before the navigation): "Record purchase" starts empty, and "Edit" loads the saved purchase afresh.
+  const resetOnHide = useRef(false);
+  const isEditing = !!editing;
+  // compared by value: a new array each render must not count as a change
+  const prefillKeyJson = prefillKey ? JSON.stringify(prefillKey) : null;
+  useLayoutEffect(
+    () => () => {
+      if (!resetOnHide.current) return;
+      resetOnHide.current = false;
+      if (prefillKeyJson) qc.removeQueries({ queryKey: JSON.parse(prefillKeyJson), exact: true });
+      if (isEditing) return;
+      setSupplierId("");
+      setSupplierBillNo("");
+      setPurchaseDate(isoDay());
+      setLines([]);
+      setPaidAmount("");
+      setPaymentMode("BANK_TRANSFER");
+      setNotes("");
+    },
+    [qc, prefillKeyJson, isEditing]
+  );
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["supplier", "all"],
@@ -178,6 +212,7 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["stock"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      resetOnHide.current = true;
       router.push(`/purchases/${purchase.id}`);
     },
     onError: (e) => toast.error(errorMessage(e)),

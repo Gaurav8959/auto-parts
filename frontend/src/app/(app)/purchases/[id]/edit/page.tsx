@@ -16,8 +16,9 @@ const skeleton = <div className="h-96 animate-pulse rounded-xl border border-bor
 
 // The recorded purchase, as the purchase form's starting point
 function EditForm({ purchase }: { purchase: Purchase }) {
+  const prefillKey = ["purchase-edit", purchase.id];
   const { data: prefill, isError } = useQuery({
-    queryKey: ["purchase-edit", purchase.id],
+    queryKey: prefillKey,
     staleTime: 0,
     queryFn: async (): Promise<PurchasePrefill> => {
       const items = purchase.items || [];
@@ -83,6 +84,7 @@ function EditForm({ purchase }: { purchase: Purchase }) {
   return (
     <PurchaseForm
       prefill={prefill}
+      prefillKey={prefillKey}
       editing={{ id: purchase.id, purchaseNumber: purchase.purchaseNumber, paidAmount: Number(purchase.paidAmount) }}
     />
   );

@@ -125,7 +125,15 @@ function ProductDetail() {
               </Detail>
             )}
             {p.avgCost !== undefined && <Detail label="Avg. cost (this view)">{inr(p.avgCost)}</Detail>}
-            {p.purchasePrice !== undefined && <Detail label="Last purchase price">{inr(p.purchasePrice)}</Detail>}
+            {p.purchasePrice !== undefined && (
+              // with GST added, as the product form shows it; the cost itself is kept before GST
+              <Detail label="Purchase cost (incl. GST)">
+                <span className="tabular">
+                  {inr(p.purchasePrice * (1 + p.taxPercent / 100))}{" "}
+                  <span className="text-fg-3">· {inr(p.purchasePrice)} before GST</span>
+                </span>
+              </Detail>
+            )}
             {margin !== null && (
               <Detail label="Margin per unit">
                 <span className={margin < 0 ? "text-danger" : ""}>{inr(margin)}</span>

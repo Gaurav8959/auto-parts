@@ -100,6 +100,9 @@ function LoginForm() {
     setBusy(true);
     try {
       await login(email, password);
+      // the sign-in page can stay alive in the background: don't leave the password (or a spinner) in it
+      setPassword("");
+      setBusy(false);
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);

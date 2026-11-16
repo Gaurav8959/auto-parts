@@ -5,7 +5,7 @@ import { Product } from "../../entities/catalog/product.entity";
 import { ShopStock } from "../../entities/inventory/shop-stock.entity";
 import { Shop } from "../../entities/shop/shop.entity";
 import { StringError } from "../../errors/string.error";
-import { TProduct, TProductListParams, TStockStatusFilter } from "../../types/catalog.type";
+import { TDiscountType, TProduct, TProductListParams, TStockStatusFilter } from "../../types/catalog.type";
 import { TStockTransactionType } from "../../types/inventory.type";
 import { TShopScope } from "../../types/shop.type";
 import ApiUtility from "../../utilities/api.utility";
@@ -182,6 +182,29 @@ const toEntity = (params: TProduct) => {
   return product;
 };
 
+// Discount off MRP (reference for billing only). It needs an MRP to come off: a percent stays
+// within 100 and an amount within the MRP. No MRP or no value clears it.
+const mrpDiscount = (params: TProduct, existing?: Product): Partial<Product> => {
+  const given = <K extends keyof TProduct & keyof Product>(field: K) =>
+    params[field] !== undefined ? params[field] : existing?.[field];
+  if (params.mrp === undefined && params.mrpDiscountType === undefined && params.mrpDiscountValue === undefined) {
+    return {};
+  }
+  const mrp = Number(given("mrp")) || 0;
+  const type = given("mrpDiscountType") as TDiscountType | null;
+  const value = Number(given("mrpDiscountValue")) || 0;
+  if (!mrp || !value) return { mrpDiscountType: null, mrpDiscountValue: null };
+
+  if (!type) throw new StringError("Say whether the discount on MRP is a percent or an amount.");
+  if (type === TDiscountType.PERCENT && value > 100) {
+    throw new StringError("The discount on MRP can't be more than 100%.");
+  }
+  if (type === TDiscountType.AMOUNT && value > mrp) {
+    throw new StringError(`The discount on MRP (₹${value}) can't be more than the MRP (₹${mrp}).`);
+  }
+  return { mrpDiscountType: type, mrpDiscountValue: value };
+};
+
 // Products are shared by every shop. Opening stock, rack and reorder level go to the current shop.
 const create = async (params: TProduct, userId: number, shopId: TShopScope) => {
   await assertUniqueSku(params.sku);
@@ -190,6 +213,7 @@ const create = async (params: TProduct, userId: number, shopId: TShopScope) => {
   const id = await AppDataSource.transaction(async (manager) => {
     const product = await manager.getRepository(Product).save({
       ...toEntity(params),
+      ...mrpDiscount(params),
       reorderLevel: params.reorderLevel ?? 5,
       createdBy: { id: userId },
       updatedBy: { id: userId },
@@ -227,6 +251,7 @@ const update = async (id: number, params: TProduct, userId: number, shopId: TSho
 
   await ProductRepository.update(id, {
     ...toEntity(params),
+    ...mrpDiscount(params, existing),
     // without a shop selected, the admin edits the default used by shops that start stocking it
     ...(!shopId && params.reorderLevel !== undefined && { reorderLevel: params.reorderLevel }),
     updatedBy: { id: userId },

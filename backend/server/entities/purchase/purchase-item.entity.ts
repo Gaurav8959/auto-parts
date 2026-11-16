@@ -1,4 +1,5 @@
 import { Column, Entity, JoinColumn, ManyToOne } from "typeorm";
+import { TDiscountType } from "../../types/catalog.type";
 import { ColumnNumericTransformer } from "../../utilities/common.utility";
 import { PrimaryAuditEntity } from "../base/primaryaudit.entity";
 import { Product } from "../catalog/product.entity";
@@ -43,6 +44,31 @@ export class PurchaseItem extends PrimaryAuditEntity {
     transformer: new ColumnNumericTransformer(),
   })
   unitCost: number;
+
+  // Discount off the line (quantity × unit cost) before GST, as entered: a percent or a flat ₹ amount
+  @Column({ name: "discount_type", type: "varchar", length: 10, nullable: true, default: null })
+  discountType: TDiscountType;
+
+  @Column({
+    name: "discount_value",
+    type: "decimal",
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: new ColumnNumericTransformer(),
+  })
+  discountValue: number;
+
+  // what the discount came to in ₹
+  @Column({
+    name: "discount_amount",
+    type: "decimal",
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: new ColumnNumericTransformer(),
+  })
+  discountAmount: number;
 
   @Column({
     name: "tax_percent",

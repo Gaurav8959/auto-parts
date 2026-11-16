@@ -15,13 +15,30 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { inr, isoDay, label } from "@/lib/format";
 import { P } from "@/lib/permissions";
-import { PAYMENT_MODES, type Party, type PaymentMode, type Product, type Purchase } from "@/lib/types";
+import {
+  PAYMENT_MODES,
+  type DiscountType,
+  type Party,
+  type PaymentMode,
+  type Product,
+  type Purchase,
+} from "@/lib/types";
+import { convertDiscount, discountOff, discountProblem } from "@/lib/discount";
+import { DiscountUnitSwitch } from "@/components/discount-unit-switch";
 import { ShopChip } from "@/components/layout/shop-switcher";
 import { useShopScope } from "@/lib/shop";
 import { GstBadge, GstModeSwitch, type GstMode } from "@/components/gst-mode";
 import { useStoredValue } from "@/lib/storage";
 
-export type PurchaseLine = { product: Product; quantity: string; unitCost: string; taxPercent: string };
+export type PurchaseLine = {
+  product: Product;
+  quantity: string;
+  unitCost: string;
+  taxPercent: string;
+  // off the line (quantity × unit cost), before GST: a percent of it or a flat ₹ amount
+  discountType: DiscountType;
+  discount: string;
+};
 type Line = PurchaseLine;
 
 // A recorded purchase as the form's starting point, when editing it
@@ -40,7 +57,7 @@ export type PurchaseEditing = { id: number; purchaseNumber: string; paidAmount: 
 const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 const cell =
-  "h-8 w-full rounded-md border border-border bg-surface px-2 text-right text-sm tabular focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-[var(--ring)]";
+  "h-8 w-full rounded-md border border-border bg-surface px-2 text-right text-sm tabular focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-[var(--ring)] aria-invalid:border-danger";
 
 // Record a supplier bill, or (with `editing`) change a recorded one
 export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; editing?: PurchaseEditing }) {
@@ -69,15 +86,21 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
     queryFn: () => get<Party[]>("/supplier/all"),
   });
 
+  // each line: quantity × unit cost, less its discount, then GST on what's left (as the server works it out)
   const computed = useMemo(() => {
     const rows = lines.map((l) => {
-      const base = r2(Number(l.quantity || 0) * Number(l.unitCost || 0));
+      const gross = r2(Number(l.quantity || 0) * Number(l.unitCost || 0));
+      const problem = discountProblem(gross, l.discountType, l.discount, "line");
+      const off = problem ? 0 : discountOff(gross, l.discountType, Number(l.discount));
+      const base = r2(gross - off);
       const tax = isGst ? r2((base * Number(l.taxPercent || 0)) / 100) : 0;
-      return { base, tax, total: r2(base + tax) };
+      return { gross, off, problem, base, tax, total: r2(base + tax) };
     });
+    const itemsTotal = r2(rows.reduce((a, b) => a + b.gross, 0));
+    const discountTotal = r2(rows.reduce((a, b) => a + b.off, 0));
     const subTotal = r2(rows.reduce((a, b) => a + b.base, 0));
     const taxTotal = r2(rows.reduce((a, b) => a + b.tax, 0));
-    return { rows, subTotal, taxTotal, grandTotal: r2(subTotal + taxTotal) };
+    return { rows, itemsTotal, discountTotal, subTotal, taxTotal, grandTotal: r2(subTotal + taxTotal) };
   }, [lines, isGst]);
 
   const addProduct = (product: Product) => {
@@ -92,6 +115,8 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
         quantity: "1",
         unitCost: product.purchasePrice ? String(product.purchasePrice) : "",
         taxPercent: String(product.taxPercent),
+        discountType: "PERCENT",
+        discount: "",
       },
     ]);
   };
@@ -99,12 +124,27 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
   const update = (i: number, patch: Partial<Line>) =>
     setLines((prev) => prev.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
+  // switching % / ₹ keeps the same discount: 5% of a ₹420 line becomes ₹21
+  const setDiscountType = (i: number, to: DiscountType) =>
+    setLines((prev) =>
+      prev.map((l, j) => {
+        if (j !== i || l.discountType === to) return l;
+        const gross = Number(l.quantity || 0) * Number(l.unitCost || 0);
+        return {
+          ...l,
+          discountType: to,
+          discount: l.discount === "" ? "" : String(convertDiscount(gross, Number(l.discount), to)),
+        };
+      })
+    );
+
   // an edit doesn't take payment: what was paid to the supplier stays paid
   const paid = editing ? editing.paidAmount : Number(paidAmount || 0);
   const valid =
     supplierId &&
     lines.length > 0 &&
     lines.every((l) => Number(l.quantity) > 0 && l.unitCost !== "" && Number(l.unitCost) >= 0) &&
+    computed.rows.every((row) => !row.problem) &&
     paid <= computed.grandTotal;
 
   const create = useMutation({
@@ -120,6 +160,8 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
           quantity: Number(l.quantity),
           unitCost: Number(l.unitCost),
           ...(isGst && { taxPercent: Number(l.taxPercent) }),
+          discountType: Number(l.discount) > 0 ? l.discountType : null,
+          discountValue: Number(l.discount) > 0 ? Number(l.discount) : 0,
         })),
       };
       if (editing) return put<Purchase>(`/purchase/${editing.id}`, body);
@@ -209,6 +251,7 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
                   <th className="h-9 pl-5 text-left font-medium">Item</th>
                   <th className="w-24 px-1 text-right font-medium">Qty</th>
                   <th className="w-32 px-1 text-right font-medium">Unit cost</th>
+                  <th className="w-40 px-1 text-right font-medium">Discount</th>
                   {isGst && <th className="w-24 px-1 text-right font-medium">GST %</th>}
                   <th className="w-32 pr-3 text-right font-medium">Total</th>
                   <th className="w-10 pr-3" />
@@ -243,6 +286,26 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
                         onChange={(e) => update(i, { unitCost: e.target.value })}
                       />
                     </td>
+                    <td className="px-1">
+                      <div className="flex gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          aria-label={`Discount on ${line.product.name}`}
+                          aria-invalid={!!computed.rows[i]?.problem}
+                          className={cn(cell, "min-w-0")}
+                          value={line.discount}
+                          placeholder="0"
+                          onChange={(e) => update(i, { discount: e.target.value })}
+                        />
+                        <DiscountUnitSwitch
+                          value={line.discountType}
+                          onChange={(to) => setDiscountType(i, to)}
+                          className="h-8"
+                        />
+                      </div>
+                    </td>
                     {isGst && (
                       <td className="px-1">
                         <input
@@ -255,7 +318,14 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
                         />
                       </td>
                     )}
-                    <td className="pr-3 text-right font-medium tabular">{inr(computed.rows[i]?.total)}</td>
+                    <td className="pr-3 text-right tabular">
+                      <div className="font-medium">{inr(computed.rows[i]?.total)}</div>
+                      {computed.rows[i]?.problem ? (
+                        <div className="text-xs text-danger">{computed.rows[i].problem}</div>
+                      ) : computed.rows[i]?.off > 0 ? (
+                        <div className="text-xs text-success">{inr(computed.rows[i].off)} off</div>
+                      ) : null}
+                    </td>
                     <td className="pr-3">
                       <button
                         type="button"
@@ -340,6 +410,18 @@ export function PurchaseForm({ prefill, editing }: { prefill?: PurchasePrefill; 
           </div>
           <div>
             <dl className="space-y-1.5 text-sm">
+              {computed.discountTotal > 0 && (
+                <>
+                  <div className="flex justify-between text-fg-2">
+                    <dt>Items total</dt>
+                    <dd className="tabular">{inr(computed.itemsTotal)}</dd>
+                  </div>
+                  <div className="flex justify-between text-fg-2">
+                    <dt>Discount</dt>
+                    <dd className="tabular text-success">− {inr(computed.discountTotal)}</dd>
+                  </div>
+                </>
+              )}
               {isGst && (
                 <>
                   <div className="flex justify-between text-fg-2">

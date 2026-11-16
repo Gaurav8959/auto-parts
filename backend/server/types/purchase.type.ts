@@ -1,3 +1,5 @@
+import { TDiscountType } from "./catalog.type";
+
 export enum TPaymentStatus {
   UNPAID = "UNPAID",
   PARTIAL = "PARTIAL",
@@ -17,6 +19,9 @@ export type TPurchaseItem = {
   quantity: number;
   unitCost: number;
   taxPercent?: number;
+  // off the line (quantity × unit cost), before GST: a percent of it or a flat ₹ amount
+  discountType?: TDiscountType | null;
+  discountValue?: number | null;
 };
 
 export type TPurchase = {

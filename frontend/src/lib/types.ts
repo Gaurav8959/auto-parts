@@ -72,6 +72,8 @@ export type PermissionRow = {
 export type Category = { id: number; name: string; description?: string | null; productCount?: number };
 export type Brand = Category;
 
+export type DiscountType = "PERCENT" | "AMOUNT";
+
 export type Product = {
   id: number;
   sku: string;
@@ -86,6 +88,9 @@ export type Product = {
   purchasePrice?: number;
   sellingPrice: number;
   mrp?: number | null;
+  // discount off MRP, as entered: for reference while billing, never on the invoice
+  mrpDiscountType?: DiscountType | null;
+  mrpDiscountValue?: number | null;
   // stock figures are for the current shop (or totals across shops in the admin's all-shops view)
   stockQuantity: number;
   reorderLevel: number;
@@ -145,6 +150,10 @@ export type PurchaseItem = {
   sku: string;
   quantity: number;
   unitCost: number;
+  // off the line before GST, as entered (percent or ₹), and what it came to in ₹
+  discountType?: DiscountType | null;
+  discountValue?: number;
+  discountAmount?: number;
   taxPercent: number;
   taxAmount: number;
   lineTotal: number;
@@ -161,6 +170,7 @@ export type Purchase = {
   isGst: boolean;
   supplier: Party;
   subTotal: number;
+  discountTotal?: number;
   taxTotal: number;
   grandTotal: number;
   paidAmount: number;
@@ -189,6 +199,10 @@ export type InvoiceItem = {
   taxAmount: number;
   lineTotal: number;
   unitCost?: number;
+  // MRP and its discount as they stood when billed: shown in the app, never printed
+  mrp?: number | null;
+  mrpDiscountType?: DiscountType | null;
+  mrpDiscountValue?: number | null;
   product?: { id: number; name: string; sku: string };
 };
 

@@ -1,4 +1,5 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from "typeorm";
+import { TDiscountType } from "../../types/catalog.type";
 import { ColumnNumericTransformer } from "../../utilities/common.utility";
 import { AuditEntity } from "../base/audit.entity";
 import { Brand } from "./brand.entity";
@@ -76,6 +77,21 @@ export class Product extends AuditEntity {
   })
   mrp: number;
 
+  // Discount off MRP, kept as entered: a percent or a flat ₹ amount. Shown to whoever bills, for
+  // reference only: it never changes the invoice price and is never printed.
+  @Column({ name: "mrp_discount_type", type: "varchar", length: 10, nullable: true, default: null })
+  mrpDiscountType: TDiscountType;
+
+  @Column({
+    name: "mrp_discount_value",
+    type: "decimal",
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    default: null,
+    transformer: new ColumnNumericTransformer(),
+  })
+  mrpDiscountValue: number;
 
   // default reorder level for a shop that starts stocking this product
   @Column({

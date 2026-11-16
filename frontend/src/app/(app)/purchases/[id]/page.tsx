@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, IndianRupee, Pencil } from "lucide-react";
+import { ArrowLeft, IndianRupee, Pencil, Printer } from "lucide-react";
 import Link from "next/link";
 import { GstBadge } from "@/components/gst-mode";
 import { EditHistory } from "@/components/edit-history";
@@ -13,7 +13,9 @@ import { PaymentDialog } from "@/components/payment-dialog";
 import { PaymentBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
-import { Table, Td, Th, Tr } from "@/components/ui/table";
+import { PaperPreview } from "@/components/invoice/paper-preview";
+import { PurchaseDocument } from "@/components/purchase/purchase-document";
+import { printInFrame } from "@/lib/print";
 import { errorMessage, get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { date, dateTime, fullName, inr, label } from "@/lib/format";
@@ -27,6 +29,7 @@ function PurchaseDetail() {
   const { can } = useAuth();
   const router = useRouter();
   const [payOpen, setPayOpen] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const { data: p, isLoading } = useQuery({
     queryKey: ["purchase", Number(id)],
@@ -36,7 +39,12 @@ function PurchaseDetail() {
   if (isLoading || !p) return <div className="h-96 animate-pulse rounded-xl border border-border bg-surface" />;
 
   const due = Math.round((p.grandTotal - p.paidAmount) * 100) / 100;
-  const isGst = p.isGst !== false;
+
+  const print = async () => {
+    setPrinting(true);
+    await printInFrame(`/print/purchase/${p.id}?autoprint=1`, `purchase-${p.id}`, () => setPrinting(false));
+    setPrinting(false);
+  };
 
   return (
     <>
@@ -56,6 +64,9 @@ function PurchaseDetail() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={print} loading={printing}>
+            <Printer /> Print
+          </Button>
           {can(P.PURCHASE_EDIT) && (
             <Button variant="secondary" onClick={() => router.push(`/purchases/${p.id}/edit`)}>
               <Pencil /> Edit
@@ -69,65 +80,16 @@ function PurchaseDetail() {
         </div>
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
-        <Card>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Item</Th>
-                <Th align="right">Qty</Th>
-                <Th align="right">Unit cost</Th>
-                {isGst && <Th align="right">GST</Th>}
-                <Th align="right">Total</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.items?.map((item) => (
-                <Tr key={item.id}>
-                  <Td>
-                    <Link href={`/products/${item.product?.id}`} className="font-medium hover:underline">
-                      {item.productName}
-                    </Link>
-                    <div className="font-mono text-xs text-fg-3">{item.sku}</div>
-                  </Td>
-                  <Td align="right">{item.quantity}</Td>
-                  <Td align="right">{inr(item.unitCost)}</Td>
-                  {isGst && (
-                    <Td align="right" className="text-fg-2">
-                      {inr(item.taxAmount)} <span className="text-fg-3">({item.taxPercent}%)</span>
-                    </Td>
-                  )}
-                  <Td align="right" className="font-medium">
-                    {inr(item.lineTotal)}
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
-          <dl className="space-y-1.5 border-t border-border px-5 py-4 text-sm">
-            {isGst ? (
-              <>
-                <div className="flex justify-between text-fg-2">
-                  <dt>Subtotal</dt>
-                  <dd className="tabular">{inr(p.subTotal)}</dd>
-                </div>
-                <div className="flex justify-between text-fg-2">
-                  <dt>GST</dt>
-                  <dd className="tabular">{inr(p.taxTotal)}</dd>
-                </div>
-              </>
-            ) : (
-              <p className="text-[13px] text-fg-3">Bought without GST: the price paid is the cost.</p>
-            )}
-            <div className="flex justify-between pt-1 text-base font-semibold">
-              <dt>Total</dt>
-              <dd className="tabular">{inr(p.grandTotal)}</dd>
-            </div>
-          </dl>
-          {p.notes && <p className="border-t border-border px-5 py-3 text-[13px] text-fg-2">{p.notes}</p>}
-        </Card>
+      {/* grid-cols-1 + min-w-0 let the A4 preview shrink on phones instead of forcing the column wide */}
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        {/* the purchase bill as it prints */}
+        <div className="min-w-0 rounded-2xl border border-border bg-surface-2/70 p-3 sm:p-6 dark:bg-surface-2/40">
+          <PaperPreview>
+            <PurchaseDocument purchase={p} />
+          </PaperPreview>
+        </div>
 
-        <Card>
+        <Card className="xl:sticky xl:top-2">
           <CardHeader title="Payments" description={due > 0 ? `${inr(due)} still owed` : "Fully paid"} />
           {p.payments?.length ? (
             <ul className="divide-y divide-border border-t border-border">
@@ -151,7 +113,7 @@ function PurchaseDetail() {
       </div>
 
       {!!p.revisions?.length && (
-        <div className="mt-4 lg:max-w-[calc(100%-336px)]">
+        <div className="mt-6 xl:max-w-[calc(100%-364px)]">
           <EditHistory revisions={p.revisions} />
         </div>
       )}

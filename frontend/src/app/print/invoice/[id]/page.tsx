@@ -4,26 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { A4_PAGE, useAutoPrint } from "@/lib/print";
 import { InvoiceDocument, InvoiceReceipt } from "@/components/invoice/invoice-document";
 import { Button } from "@/components/ui/button";
 import { get } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Invoice, InvoiceCopy } from "@/lib/types";
 
-// waits until fonts and images (logo, UPI QR) are ready so the printout is complete
-const whenPainted = async () => {
-  await document.fonts.ready;
-  await Promise.all(
-    Array.from(document.images)
-      .filter((img) => !img.complete)
-      .map((img) => new Promise((resolve) => img.addEventListener("load", resolve, { once: true })))
-  );
-};
-
-// A4: every printed page gets 10 mm top and bottom, so rows that run onto page 2 don't start at the paper's edge.
-// Receipt: roll paper, one page exactly as long as the receipt (measured just before printing), so a long bill
-// isn't split into pieces and cut in two by the printer.
-const A4_PAGE = "@page { size: A4; margin: 10mm 0; }";
+// A4 pages come from the shared print setup. Receipt: roll paper, one page exactly as long as the receipt
+// (measured just before printing), so a long bill isn't split into pieces and cut in two by the printer.
 const receiptPage = (heightMm: number) => `@page { size: 80mm ${heightMm}mm; margin: 0; }`;
 
 const fitPageToReceipt = (style: HTMLStyleElement | null) => {
@@ -61,30 +50,18 @@ export default function PrintInvoicePage() {
   }, [status, id, router]);
 
   useEffect(() => {
-    if (!inv) return;
-    document.title = inv.invoiceNumber;
-    if (!autoprint) return;
+    if (inv) document.title = inv.invoiceNumber;
+  }, [inv]);
 
-    let cancelled = false;
-    const done = () => window.parent.postMessage({ type: "ap:print-done", id }, window.location.origin);
-    window.addEventListener("afterprint", done, { once: true });
-    const timer = setTimeout(async () => {
-      await whenPainted();
-      if (cancelled) return;
-      window.parent.postMessage({ type: "ap:print-start", id }, window.location.origin);
+  useAutoPrint({
+    ready: !!inv,
+    failed: isError,
+    autoprint,
+    printId: id,
+    beforePrint: () => {
       if (format === "thermal") fitPageToReceipt(pageStyle.current);
-      window.print();
-    }, 150);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      window.removeEventListener("afterprint", done);
-    };
-  }, [inv, autoprint, id, format]);
-
-  useEffect(() => {
-    if (isError) window.parent.postMessage({ type: "ap:print-done", id }, window.location.origin);
-  }, [isError, id]);
+    },
+  });
 
   if (!inv) return <div className="p-10 text-sm text-neutral-500">Preparing invoice…</div>;
 

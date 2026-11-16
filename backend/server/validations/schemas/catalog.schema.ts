@@ -1,5 +1,5 @@
 import joi from "joi";
-import { TStockStatusFilter } from "../../types/catalog.type";
+import { TDiscountType, TStockStatusFilter } from "../../types/catalog.type";
 
 export const categorySchema = joi.object({
   name: joi.string().trim().min(1).max(100).required(),
@@ -21,6 +21,8 @@ const productFields = {
   purchasePrice: joi.number().min(0),
   sellingPrice: joi.number().min(0),
   mrp: joi.number().min(0).allow(null),
+  mrpDiscountType: joi.string().valid(...Object.values(TDiscountType)).allow(null),
+  mrpDiscountValue: joi.number().min(0).allow(null),
   reorderLevel: joi.number().min(0),
   rackLocation: joi.string().trim().max(50).allow("", null),
   vehicleCompatibility: joi.string().allow("", null),

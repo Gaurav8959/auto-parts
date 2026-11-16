@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Minus, PackageSearch, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProductPicker, type ProductPickerHandle } from "@/components/product-picker";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,9 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { errorMessage, get, post, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
-import { inr, label } from "@/lib/format";
+import { inr, label, num } from "@/lib/format";
+import { mrpDiscount } from "@/lib/discount";
+import { MrpSummary } from "@/components/invoice/mrp-summary";
 import { calculateInvoice } from "@/lib/invoice-calc";
 import { P } from "@/lib/permissions";
 import { PAYMENT_MODES, type Invoice, type Party, type PaymentMode, type Product } from "@/lib/types";
@@ -146,6 +148,32 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
   // "" = automatic: the registered customer's state, else the shop's own state
   const [placeOfSupply, setPlaceOfSupply] = useState(prefill?.placeOfSupply || "");
 
+  // Creating a bill navigates to it, but Cache Components keeps this page alive in the background
+  // with everything still filled in. Once a bill is created, clear the form as the page is hidden,
+  // so the next "New invoice" starts empty (and the form doesn't flash blank before the navigation).
+  const resetOnHide = useRef(false);
+  useLayoutEffect(
+    () => () => {
+      if (!resetOnHide.current) return;
+      resetOnHide.current = false;
+      setModeOverride(null);
+      setLines([]);
+      setCustomerId("");
+      setCustomerName("");
+      setCustomerPhone("");
+      setCustomerEmail("");
+      setVehicleNumber("");
+      setPaymentTermsDays(0);
+      setExtraDiscount(0);
+      setPaidInFull(true);
+      setPaidAmount(0);
+      setPaymentMode("CASH");
+      setNotes("");
+      setPlaceOfSupply("");
+    },
+    []
+  );
+
   const { data: customers = [] } = useQuery({
     queryKey: ["customer", "all"],
     queryFn: () => get<Party[]>("/customer/all"),
@@ -243,6 +271,7 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
         toast.success(`${noun} ${invoice.invoiceNumber} created`, {
           action: { label: "Print", onClick: () => window.open(`/print/invoice/${invoice.id}`, "_blank") },
         });
+        resetOnHide.current = true;
       }
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["products"] });
@@ -327,6 +356,12 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
                   {lines.map((line, i) => {
                     const amount = totals.items[i]?.lineTotal ?? 0;
                     const short = line.quantity > line.product.stockQuantity;
+                    // MRP and its discount: a reference for whoever bills, not part of the invoice
+                    const offer = mrpDiscount(
+                      line.product.mrp,
+                      line.product.mrpDiscountType,
+                      line.product.mrpDiscountValue
+                    );
                     return (
                       <tr key={line.product.id} className="border-t border-border">
                         <td className="py-2 pl-5">
@@ -337,6 +372,18 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
                             {short && " — not enough"}
                             {isGst && ` · GST ${line.product.taxPercent}%`}
                           </div>
+                          {offer && (
+                            <div className="text-xs text-fg-3 tabular">
+                              MRP {inr(offer.mrp)}
+                              {offer.off > 0 && (
+                                <>
+                                  {" "}
+                                  − {num(offer.percent)}% ({inr(offer.off)}) ={" "}
+                                  <span className="font-medium text-fg-2">{inr(offer.net)}</span>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-1">
                           <div className="flex items-center justify-center gap-0.5">
@@ -510,6 +557,16 @@ export function InvoiceForm({ prefill, editing }: { prefill?: Prefill; editing?:
                 <dd className="text-2xl font-semibold tracking-tight">{inr(totals.grandTotal)}</dd>
               </div>
             </dl>
+
+            <MrpSummary
+              lines={lines.map((l) => ({
+                mrp: l.product.mrp,
+                mrpDiscountType: l.product.mrpDiscountType,
+                mrpDiscountValue: l.product.mrpDiscountValue,
+                quantity: l.quantity,
+              }))}
+              className="mt-4"
+            />
 
             <div className="mt-4 space-y-3 border-t border-border pt-4">
               {editing ? (

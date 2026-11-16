@@ -6,7 +6,10 @@ import { toast } from "sonner";
 import { errorMessage, get, post, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { P } from "@/lib/permissions";
-import type { Brand, Category, Product, ShopSettings } from "@/lib/types";
+import type { Brand, Category, DiscountType, Product, ShopSettings } from "@/lib/types";
+import { inr, num } from "@/lib/format";
+import { convertDiscount, discountProblem, mrpDiscount } from "@/lib/discount";
+import { DiscountUnitSwitch } from "./discount-unit-switch";
 import { Button } from "./ui/button";
 import { Sheet } from "./ui/dialog";
 import { Field, Input, Select, Textarea } from "./ui/input";
@@ -26,6 +29,8 @@ type FormState = {
   purchasePrice: string;
   sellingPrice: string;
   mrp: string;
+  mrpDiscountType: DiscountType;
+  mrpDiscount: string;
   reorderLevel: string;
   rackLocation: string;
   vehicleCompatibility: string;
@@ -49,6 +54,8 @@ const fromProduct = (p?: Product | null, defaultTax = 18, defaultReorder = 5): F
   purchasePrice: p?.purchasePrice !== undefined ? String(p.purchasePrice) : "",
   sellingPrice: p ? String(p.sellingPrice) : "",
   mrp: p?.mrp ? String(p.mrp) : "",
+  mrpDiscountType: p?.mrpDiscountType || "PERCENT",
+  mrpDiscount: p?.mrpDiscountValue ? String(p.mrpDiscountValue) : "",
   reorderLevel: String(p?.reorderLevel ?? defaultReorder),
   rackLocation: p?.rackLocation || "",
   vehicleCompatibility: p?.vehicleCompatibility || "",
@@ -98,6 +105,29 @@ export function ProductForm({
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
+  // Discount on MRP: entered in % or ₹, only once there's an MRP for it to come off
+  const mrpValue = Number(form.mrp) || 0;
+  const discountValue = Number(form.mrpDiscount) || 0;
+  const discountIssue =
+    mrpValue > 0 ? discountProblem(mrpValue, form.mrpDiscountType, form.mrpDiscount, "MRP") : undefined;
+  const offer = discountIssue ? null : mrpDiscount(mrpValue, form.mrpDiscountType, discountValue);
+  // The MRP box shows the MRP after discount, updating as the discount is typed. The MRP itself is
+  // kept as entered (that's what gets saved), and focusing the box brings it back to edit.
+  const [editingMrp, setEditingMrp] = useState(false);
+  const discounted = !editingMrp && !!offer && offer.off > 0;
+  const setDiscountType = (to: DiscountType) =>
+    setForm((f) =>
+      f.mrpDiscountType === to
+        ? f
+        : {
+            ...f,
+            mrpDiscountType: to,
+            // keep the same discount when switching: 10% of ₹600 becomes ₹60
+            mrpDiscount:
+              f.mrpDiscount === "" ? "" : String(convertDiscount(Number(f.mrp), Number(f.mrpDiscount), to)),
+          }
+    );
+
   const mutation = useMutation({
     mutationFn: (body: object) =>
       isEdit ? put<Product>(`/catalog/products/${product!.id}`, body) : post<Product>("/catalog/products", body),
@@ -117,10 +147,13 @@ export function ProductForm({
     if (!form.sku.trim()) next.sku = "SKU is required";
     if (!form.name.trim()) next.name = "Name is required";
     if (form.sellingPrice === "" || Number(form.sellingPrice) < 0) next.sellingPrice = "Enter a selling price";
+    if (discountIssue) next.mrpDiscount = discountIssue;
     setErrors(next);
     if (Object.keys(next).length) return;
 
     const n = (v: string) => (v === "" ? undefined : Number(v));
+    const mrp = n(form.mrp);
+    const discount = mrp ? n(form.mrpDiscount) : undefined;
     mutation.mutate({
       sku: form.sku.trim(),
       partNumber: form.partNumber.trim() || null,
@@ -133,7 +166,9 @@ export function ProductForm({
       taxPercent: Number(form.taxPercent),
       ...(canCost && { purchasePrice: n(form.purchasePrice) ?? 0 }),
       sellingPrice: Number(form.sellingPrice),
-      mrp: n(form.mrp) ?? null,
+      mrp: mrp ?? null,
+      mrpDiscountType: discount ? form.mrpDiscountType : null,
+      mrpDiscountValue: discount || null,
       reorderLevel: n(form.reorderLevel) ?? 0,
       ...(!isAll && { rackLocation: form.rackLocation.trim() || null }),
       vehicleCompatibility: form.vehicleCompatibility || null,
@@ -235,18 +270,53 @@ export function ProductForm({
                 className="tabular"
               />
             </Field>
-            <Field label="MRP">
+            <Field
+              label="MRP"
+              hint={
+                discounted
+                  ? `${inr(offer.mrp)} before ${form.mrpDiscountType === "PERCENT" ? `${num(offer.percent)}%` : inr(offer.off)} off`
+                  : editingMrp && offer && offer.off > 0
+                    ? "Before discount"
+                    : undefined
+              }
+            >
               <Input
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.mrp}
+                value={discounted ? String(offer.net) : form.mrp}
+                onFocus={() => setEditingMrp(true)}
+                onBlur={() => setEditingMrp(false)}
                 onChange={(e) => set("mrp", e.target.value)}
                 className="tabular"
               />
             </Field>
+            <Field
+              label="Discount on MRP"
+              error={discountIssue}
+              hint={mrpValue > 0 ? "Shown while billing, not printed" : "Add an MRP first"}
+            >
+              <div className="flex gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.mrpDiscount}
+                  disabled={mrpValue <= 0}
+                  aria-invalid={!!discountIssue}
+                  onChange={(e) => set("mrpDiscount", e.target.value)}
+                  placeholder="0"
+                  className="min-w-0 tabular"
+                />
+                <DiscountUnitSwitch
+                  value={form.mrpDiscountType}
+                  onChange={setDiscountType}
+                  disabled={mrpValue <= 0}
+                />
+              </div>
+            </Field>
             {canCost && (
-              <Field label="Purchase cost" hint="Excluding GST">
+              <Field label="Purchase cost ( Rate )" hint="Excluding GST">
                 <Input
                   type="number"
                   min="0"

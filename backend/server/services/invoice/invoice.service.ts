@@ -57,6 +57,16 @@ import settingsService from "../settings/settings.service";
 export const INVOICE_REFERENCE = "INVOICE";
 const WALK_IN_CUSTOMER = "Walk-in Customer";
 
+// A line's MRP and its discount, as they stand on the product when it's billed (reference only)
+const mrpOf = (product: Product) => {
+  const discounted = !!product.mrp && !!product.mrpDiscountValue && !!product.mrpDiscountType;
+  return {
+    mrp: product.mrp || null,
+    mrpDiscountType: discounted ? product.mrpDiscountType : null,
+    mrpDiscountValue: discounted ? product.mrpDiscountValue : null,
+  };
+};
+
 const list = async (params: TInvoiceListParams) => {
   const query = InvoiceRepository.createQueryBuilder("invoice")
     .leftJoin("invoice.createdBy", "createdBy")
@@ -277,6 +287,7 @@ const create = async (params: TInvoice, userId: number, permissions: string[], s
         taxAmount: line.taxAmount,
         lineTotal: line.lineTotal,
         unitCost: unitCosts[i],
+        ...mrpOf(products[i]),
       })) as any,
       payments: paidAmount
         ? ([
@@ -540,6 +551,14 @@ const update = async (id: number, params: TInvoiceUpdate, userId: number, permis
         taxAmount: line.taxAmount,
         lineTotal: line.lineTotal,
         unitCost: unitCosts[i],
+        // a line already on the bill keeps the MRP it was billed with; anything added takes today's
+        ...(oldLine.has(products[i].id)
+          ? {
+              mrp: oldLine.get(products[i].id).mrp,
+              mrpDiscountType: oldLine.get(products[i].id).mrpDiscountType,
+              mrpDiscountValue: oldLine.get(products[i].id).mrpDiscountValue,
+            }
+          : mrpOf(products[i])),
       })) as any
     );
 

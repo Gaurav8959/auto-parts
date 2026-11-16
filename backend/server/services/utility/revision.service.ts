@@ -43,6 +43,7 @@ const lines = (before: TRevisionLine[], after: TRevisionLine[], priceLabel: stri
       ...(Number(was.discountPercent || 0) !== Number(line.discountPercent || 0)
         ? [`discount ${was.discountPercent || 0}% → ${line.discountPercent || 0}%`]
         : []),
+      ...(same(was.discount, line.discount) ? [] : [`discount ${was.discount || "none"} → ${line.discount || "none"}`]),
       ...(Number(was.taxPercent || 0) !== Number(line.taxPercent || 0) ? [`GST ${was.taxPercent || 0}% → ${line.taxPercent || 0}%`] : []),
     ];
     if (parts.length) out.push(`${line.name}: ${parts.join(", ")}`);

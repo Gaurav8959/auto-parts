@@ -45,6 +45,17 @@ export class Purchase extends AuditEntity {
   })
   subTotal: number;
 
+  // discounts taken off the lines; subTotal is already after them
+  @Column({
+    name: "discount_total",
+    type: "decimal",
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: new ColumnNumericTransformer(),
+  })
+  discountTotal: number;
+
   @Column({
     name: "tax_total",
     type: "decimal",

@@ -25,9 +25,10 @@ function EditForm({ purchase }: { purchase: Purchase }) {
       const products = await Promise.all(ids.map((id) => get<Product>(`/catalog/products/${id}`).catch(() => null)));
       const productById = new Map(ids.map((id, i) => [id, products[i]]));
 
-      // one line per product; a product entered twice is combined at its average cost
+      // one line per product; a product entered twice is combined at its average cost, its discounts added up in ₹
       const lines: PurchaseLine[] = [];
       const valueOf = new Map<number, number>();
+      const offOf = new Map<number, number>();
       items.forEach((item) => {
         const id = item.product?.id;
         if (!id) return;
@@ -35,10 +36,14 @@ function EditForm({ purchase }: { purchase: Purchase }) {
         const value = quantity * Number(item.unitCost);
         const existing = lines.find((l) => l.product.id === id);
         valueOf.set(id, (valueOf.get(id) || 0) + value);
+        offOf.set(id, (offOf.get(id) || 0) + Number(item.discountAmount || 0));
         if (existing) {
           const totalQty = Number(existing.quantity) + quantity;
           existing.quantity = String(totalQty);
           existing.unitCost = String(Math.round((valueOf.get(id)! / totalQty) * 100) / 100);
+          const off = Math.round(offOf.get(id)! * 100) / 100;
+          existing.discountType = "AMOUNT";
+          existing.discount = off > 0 ? String(off) : "";
           return;
         }
         const product: Product = productById.get(id) || {
@@ -57,6 +62,8 @@ function EditForm({ purchase }: { purchase: Purchase }) {
           quantity: String(quantity),
           unitCost: String(Number(item.unitCost)),
           taxPercent: String(Number(item.taxPercent) || product.taxPercent),
+          discountType: item.discountType || "PERCENT",
+          discount: Number(item.discountValue) > 0 ? String(Number(item.discountValue)) : "",
         });
       });
 

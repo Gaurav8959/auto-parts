@@ -1,4 +1,5 @@
 import joi from "joi";
+import { TDiscountType } from "../../types/catalog.type";
 import { TPaymentMode, TPaymentStatus } from "../../types/purchase.type";
 
 export const paymentSchema = joi.object({
@@ -21,6 +22,8 @@ export const createPurchaseSchema = joi.object({
         quantity: joi.number().positive().required(),
         unitCost: joi.number().min(0).required(),
         taxPercent: joi.number().min(0).max(100).optional(),
+        discountType: joi.string().valid(...Object.values(TDiscountType)).allow(null).optional(),
+        discountValue: joi.number().min(0).allow(null).optional(),
       })
     )
     .min(1)

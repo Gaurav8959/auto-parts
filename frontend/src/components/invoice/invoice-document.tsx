@@ -5,10 +5,11 @@ import type { Invoice, InvoiceCopy } from "@/lib/types";
 import { useQr } from "./use-qr";
 import { splitTax, stateLabel } from "@/lib/gst";
 
-// Paper colours are fixed: an invoice looks the same on screen, on paper and in the PDF, in any app theme
-const INK = "#17171c";
-const MUTED = "#6b6b76";
-const BRAND = "#5a4ff3";
+// Paper colours are fixed: an invoice looks the same on screen, on paper and in the PDF, in any app theme.
+// The purchase document uses the same paper.
+export const INK = "#17171c";
+export const MUTED = "#6b6b76";
+export const BRAND = "#5a4ff3";
 
 export const COPY_LABEL: Record<InvoiceCopy, string> = {
   ORIGINAL: "Original for recipient",
@@ -22,7 +23,7 @@ const day = (v?: string | null) =>
   v ? new Date(v).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "";
 const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
-function Label({ children }: { children: React.ReactNode }) {
+export function Label({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-[9px] font-semibold tracking-[0.08em] uppercase" style={{ color: MUTED }}>
       {children}

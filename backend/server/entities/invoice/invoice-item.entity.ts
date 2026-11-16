@@ -1,4 +1,5 @@
 import { Column, Entity, JoinColumn, ManyToOne } from "typeorm";
+import { TDiscountType } from "../../types/catalog.type";
 import { ColumnNumericTransformer } from "../../utilities/common.utility";
 import { PrimaryAuditEntity } from "../base/primaryaudit.entity";
 import { Product } from "../catalog/product.entity";
@@ -123,4 +124,30 @@ export class InvoiceItem extends PrimaryAuditEntity {
     transformer: new ColumnNumericTransformer(),
   })
   unitCost: number;
+
+  // MRP and its discount as they stood when billed: shown to whoever bills, never printed or sent
+  @Column({
+    name: "mrp",
+    type: "decimal",
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    default: null,
+    transformer: new ColumnNumericTransformer(),
+  })
+  mrp: number;
+
+  @Column({ name: "mrp_discount_type", type: "varchar", length: 10, nullable: true, default: null })
+  mrpDiscountType: TDiscountType;
+
+  @Column({
+    name: "mrp_discount_value",
+    type: "decimal",
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    default: null,
+    transformer: new ColumnNumericTransformer(),
+  })
+  mrpDiscountValue: number;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@/lib/api";
+import { printInFrame } from "@/lib/print";
 import type { Invoice, InvoiceCopy } from "@/lib/types";
 
 // Prints through a hidden frame: no new tab, the browser's print dialog opens over the current page
@@ -9,28 +10,11 @@ export const printInvoice = (
   options: { format?: "a4" | "thermal"; copy?: InvoiceCopy } = {},
   onStart?: () => void
 ) =>
-  new Promise<void>((resolve) => {
-    const frame = document.createElement("iframe");
-    frame.setAttribute("aria-hidden", "true");
-    Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
-    frame.src = `/print/invoice/${invoiceId}?format=${options.format || "a4"}&copy=${options.copy || "ORIGINAL"}&autoprint=1`;
-
-    const cleanup = () => {
-      window.removeEventListener("message", onMessage);
-      clearTimeout(fallback);
-      setTimeout(() => frame.remove(), 500);
-      resolve();
-    };
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.data?.id !== String(invoiceId)) return;
-      if (event.data.type === "ap:print-start") onStart?.();
-      if (event.data.type === "ap:print-done") cleanup();
-    };
-    // some browsers never fire afterprint inside a frame
-    const fallback = setTimeout(cleanup, 120_000);
-    window.addEventListener("message", onMessage);
-    document.body.appendChild(frame);
-  });
+  printInFrame(
+    `/print/invoice/${invoiceId}?format=${options.format || "a4"}&copy=${options.copy || "ORIGINAL"}&autoprint=1`,
+    String(invoiceId),
+    onStart
+  );
 
 export const fetchInvoicePdf = async (invoice: Invoice, copy: InvoiceCopy = "ORIGINAL") => {
   const res = await api.get(`/invoice/${invoice.id}/pdf`, { params: { copy }, responseType: "blob" });

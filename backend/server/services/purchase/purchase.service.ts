@@ -13,10 +13,12 @@ import { TStockTransactionType } from "../../types/inventory.type";
 import {
   TPaymentStatus,
   TPurchase,
+  TPurchaseItem,
   TPurchaseListParams,
   TPurchasePayment,
   TPurchaseUpdate,
 } from "../../types/purchase.type";
+import { TDiscountType } from "../../types/catalog.type";
 import ApiUtility from "../../utilities/api.utility";
 import { twoDecimalFloat } from "../../utilities/common.utility";
 import { endOfDay, SHOP_TIME_ZONE, startOfDay } from "../../utilities/date-time.utility";
@@ -35,6 +37,43 @@ export const getPaymentStatus = (paid: number, total: number) => {
   if (paid >= total) return TPaymentStatus.PAID;
   return TPaymentStatus.PARTIAL;
 };
+
+// One line of a supplier bill: quantity × unit cost, less its discount (a percent of the line or a flat
+// ₹ amount off it), then GST on what's left. What's left is what the goods cost, so it's what goes into
+// the shop's average cost, and the cost of one unit is it over the quantity.
+const lineOf = (item: TPurchaseItem, product: Product, taxPercent: number) => {
+  const gross = twoDecimalFloat(item.quantity * item.unitCost);
+  const entered = Number(item.discountValue) || 0;
+  const discountType = entered > 0 ? item.discountType || null : null;
+  if (entered > 0 && !discountType) {
+    throw new StringError(`Say whether the discount on "${product.name}" is a percent or an amount.`);
+  }
+  if (discountType === TDiscountType.PERCENT && entered > 100) {
+    throw new StringError(`The discount on "${product.name}" can't be more than 100%.`);
+  }
+  if (discountType === TDiscountType.AMOUNT && entered > gross) {
+    throw new StringError(
+      `The discount on "${product.name}" (${formatInr(entered)}) is more than the line itself (${formatInr(gross)}).`
+    );
+  }
+  const discountAmount =
+    discountType === TDiscountType.PERCENT ? twoDecimalFloat((gross * entered) / 100) : discountType ? entered : 0;
+  const value = twoDecimalFloat(gross - discountAmount);
+  const taxAmount = twoDecimalFloat((value * taxPercent) / 100);
+  return {
+    discountType,
+    discountValue: discountType ? entered : 0,
+    discountAmount,
+    value,
+    taxAmount,
+    lineTotal: twoDecimalFloat(value + taxAmount),
+    unitCost: item.quantity > 0 ? twoDecimalFloat(value / item.quantity) : item.unitCost,
+  };
+};
+
+// "5%" or "₹24.00", for the edit history
+const discountLabel = (type: TDiscountType | null, value: number) =>
+  !type || !Number(value) ? undefined : type === TDiscountType.PERCENT ? `${Number(value)}%` : formatInr(value);
 
 const list = async (params: TPurchaseListParams) => {
   const query = PurchaseRepository.createQueryBuilder("purchase")
@@ -125,9 +164,12 @@ const create = async (params: TPurchase, userId: number, shopId: number) => {
     );
 
     let subTotal = 0;
+    let discountTotal = 0;
     let taxTotal = 0;
 
     const items = [];
+    // cost of one unit on each line, after its discount: what goes into stock
+    const unitCosts: number[] = [];
     for (const item of params.items) {
       const product = await productRepo.findOne({
         where: { id: item.productId, isDeleted: false },
@@ -136,11 +178,12 @@ const create = async (params: TPurchase, userId: number, shopId: number) => {
       if (!product) throw new StringError("One of the products was not found.");
 
       const taxPercent = isGst ? item.taxPercent ?? Number(product.taxPercent) : 0;
-      const base = twoDecimalFloat(item.quantity * item.unitCost);
-      const taxAmount = twoDecimalFloat((base * taxPercent) / 100);
+      const line = lineOf(item, product, taxPercent);
 
-      subTotal += base;
-      taxTotal += taxAmount;
+      subTotal += line.value;
+      discountTotal += line.discountAmount;
+      taxTotal += line.taxAmount;
+      unitCosts.push(line.unitCost);
 
       // The shop's weighted average cost keeps profit honest when supplier prices move;
       // the catalog keeps the latest price as a reference for every shop
@@ -148,11 +191,9 @@ const create = async (params: TPurchase, userId: number, shopId: number) => {
         const stock = await stockService.lockStockRow(manager, shopId, product);
         const currentQty = Math.max(0, Number(stock.quantity));
         const newQty = currentQty + item.quantity;
-        const averageCost = twoDecimalFloat(
-          (currentQty * Number(stock.avgCost) + item.quantity * item.unitCost) / newQty
-        );
+        const averageCost = twoDecimalFloat((currentQty * Number(stock.avgCost) + line.value) / newQty);
         await manager.getRepository(ShopStock).update(stock.id, { avgCost: averageCost });
-        await productRepo.update(product.id, { purchasePrice: item.unitCost });
+        await productRepo.update(product.id, { purchasePrice: line.unitCost });
       }
 
       items.push({
@@ -161,9 +202,12 @@ const create = async (params: TPurchase, userId: number, shopId: number) => {
         sku: product.sku,
         quantity: item.quantity,
         unitCost: item.unitCost,
+        discountType: line.discountType,
+        discountValue: line.discountValue,
+        discountAmount: line.discountAmount,
         taxPercent,
-        taxAmount,
-        lineTotal: twoDecimalFloat(base + taxAmount),
+        taxAmount: line.taxAmount,
+        lineTotal: line.lineTotal,
       });
     }
 
@@ -181,6 +225,7 @@ const create = async (params: TPurchase, userId: number, shopId: number) => {
       purchaseDate: params.purchaseDate ? new Date(params.purchaseDate) : new Date(),
       supplier: { id: supplier.id },
       subTotal: twoDecimalFloat(subTotal),
+      discountTotal: twoDecimalFloat(discountTotal),
       taxTotal: twoDecimalFloat(taxTotal),
       grandTotal,
       paidAmount,
@@ -202,13 +247,13 @@ const create = async (params: TPurchase, userId: number, shopId: number) => {
       updatedBy: { id: userId },
     });
 
-    for (const item of params.items) {
+    for (const [i, item] of params.items.entries()) {
       await stockService.move(manager, {
         shopId,
         productId: item.productId,
         type: TStockTransactionType.PURCHASE,
         quantity: item.quantity,
-        unitCost: item.unitCost,
+        unitCost: unitCosts[i],
         referenceType: PURCHASE_REFERENCE,
         referenceId: purchase.id,
         referenceNo: purchaseNumber,
@@ -253,29 +298,34 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
     const wasOnBill = new Set(oldItems.map((i) => i.product.id));
 
     let subTotal = 0;
+    let discountTotal = 0;
     let taxTotal = 0;
-    const items = params.items.map((item) => {
+    const lines = params.items.map((item) => {
       const product = productById.get(item.productId);
       if (!product || (!wasOnBill.has(item.productId) && product.isDeleted)) {
         throw new StringError("One of the products was not found.");
       }
       const taxPercent = isGst ? item.taxPercent ?? Number(product.taxPercent) : 0;
-      const base = twoDecimalFloat(item.quantity * item.unitCost);
-      const taxAmount = twoDecimalFloat((base * taxPercent) / 100);
-      subTotal += base;
-      taxTotal += taxAmount;
-      return {
-        purchase: { id },
-        product: { id: product.id },
-        productName: product.name,
-        sku: product.sku,
-        quantity: item.quantity,
-        unitCost: item.unitCost,
-        taxPercent,
-        taxAmount,
-        lineTotal: twoDecimalFloat(base + taxAmount),
-      };
+      const line = lineOf(item, product, taxPercent);
+      subTotal += line.value;
+      discountTotal += line.discountAmount;
+      taxTotal += line.taxAmount;
+      return { item, line, taxPercent, product };
     });
+    const items = lines.map(({ item, line, taxPercent, product }) => ({
+      purchase: { id },
+      product: { id: product.id },
+      productName: product.name,
+      sku: product.sku,
+      quantity: item.quantity,
+      unitCost: item.unitCost,
+      discountType: line.discountType,
+      discountValue: line.discountValue,
+      discountAmount: line.discountAmount,
+      taxPercent,
+      taxAmount: line.taxAmount,
+      lineTotal: line.lineTotal,
+    }));
 
     const grandTotal = twoDecimalFloat(subTotal + taxTotal);
     const paid = twoDecimalFloat(Number(purchase.paidAmount));
@@ -285,21 +335,27 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
       );
     }
 
-    // quantity and value (before GST) of each product, before and after the edit
-    const totalsOf = (lines: { productId: number; quantity: number; unitCost: number }[]) => {
+    // quantity and value (before GST, after discount) of each product, before and after the edit
+    const totalsOf = (rows: { productId: number; quantity: number; value: number }[]) => {
       const map = new Map<number, { quantity: number; value: number }>();
-      lines.forEach((l) => {
+      rows.forEach((l) => {
         const t = map.get(l.productId) || { quantity: 0, value: 0 };
         t.quantity = twoDecimalFloat(t.quantity + l.quantity);
-        t.value = twoDecimalFloat(t.value + l.quantity * l.unitCost);
+        t.value = twoDecimalFloat(t.value + l.value);
         map.set(l.productId, t);
       });
       return map;
     };
     const before = totalsOf(
-      oldItems.map((i) => ({ productId: i.product.id, quantity: Number(i.quantity), unitCost: Number(i.unitCost) }))
+      oldItems.map((i) => ({
+        productId: i.product.id,
+        quantity: Number(i.quantity),
+        value: twoDecimalFloat(Number(i.quantity) * Number(i.unitCost) - Number(i.discountAmount || 0)),
+      }))
     );
-    const after = totalsOf(params.items);
+    const after = totalsOf(
+      lines.map(({ item, line }) => ({ productId: item.productId, quantity: item.quantity, value: line.value }))
+    );
 
     const stockRows = await stockService.lockStockRows(manager, purchaseShopId, found);
     const movements = [];
@@ -333,8 +389,8 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
               : Number(stock.avgCost);
         await manager.getRepository(ShopStock).update(stock.id, { avgCost });
         stock.avgCost = avgCost;
-        const latest = [...params.items].reverse().find((i) => i.productId === productId);
-        if (latest) await manager.getRepository(Product).update(productId, { purchasePrice: latest.unitCost });
+        const latest = [...lines].reverse().find((l) => l.item.productId === productId);
+        if (latest) await manager.getRepository(Product).update(productId, { purchasePrice: latest.line.unitCost });
       }
 
       if (change !== 0) {
@@ -370,6 +426,7 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
           name: i.productName,
           quantity: Number(i.quantity),
           price: Number(i.unitCost),
+          discount: discountLabel(i.discountType, i.discountValue),
           taxPercent: Number(i.taxPercent),
         })),
         items.map((i) => ({
@@ -377,6 +434,7 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
           name: i.productName,
           quantity: i.quantity,
           price: i.unitCost,
+          discount: discountLabel(i.discountType, i.discountValue),
           taxPercent: i.taxPercent,
         })),
         "cost"
@@ -393,6 +451,7 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
       isGst: purchase.isGst,
       notes: purchase.notes,
       subTotal: Number(purchase.subTotal),
+      discountTotal: Number(purchase.discountTotal || 0),
       taxTotal: Number(purchase.taxTotal),
       grandTotal: Number(purchase.grandTotal),
       items: oldItems.map((i) => ({
@@ -401,6 +460,9 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
         sku: i.sku,
         quantity: Number(i.quantity),
         unitCost: Number(i.unitCost),
+        discountType: i.discountType || null,
+        discountValue: Number(i.discountValue || 0),
+        discountAmount: Number(i.discountAmount || 0),
         taxPercent: Number(i.taxPercent),
         lineTotal: Number(i.lineTotal),
       })),
@@ -413,6 +475,7 @@ const update = async (id: number, params: TPurchaseUpdate, userId: number, shopI
       isGst,
       notes: params.notes || null,
       subTotal: twoDecimalFloat(subTotal),
+      discountTotal: twoDecimalFloat(discountTotal),
       taxTotal: twoDecimalFloat(taxTotal),
       grandTotal,
       paymentStatus: getPaymentStatus(paid, grandTotal),

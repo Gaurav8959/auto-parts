@@ -21,6 +21,8 @@ export type TProduct = {
   purchasePrice?: number;
   sellingPrice: number;
   mrp?: number;
+  mrpDiscountType?: TDiscountType | null;
+  mrpDiscountValue?: number | null;
   reorderLevel?: number;
   rackLocation?: string;
   vehicleCompatibility?: string;
@@ -38,6 +40,12 @@ export type TProductListParams = {
   stockStatus?: TStockStatusFilter;
   isActive?: string;
 };
+
+// A discount is entered either as a percent or as a flat ₹ amount: off a product's MRP, or off a purchase line
+export enum TDiscountType {
+  PERCENT = "PERCENT",
+  AMOUNT = "AMOUNT",
+}
 
 export enum TStockStatusFilter {
   IN_STOCK = "IN_STOCK",

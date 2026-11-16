@@ -37,6 +37,7 @@ import {
   whatsappLink,
 } from "@/components/invoice/invoice-actions";
 import { balanceOf, InvoiceDocument, isOverdue, PaperPreview } from "@/components/invoice/invoice-document";
+import { MrpSummary } from "@/components/invoice/mrp-summary";
 import { Guard } from "@/components/layout/guard";
 import { ShopBadge } from "@/components/layout/shop-switcher";
 import { PaymentDialog } from "@/components/payment-dialog";
@@ -365,6 +366,8 @@ function InvoiceDetail() {
                 <span className={cn("font-medium tabular", profit < 0 && "text-danger")}>{inr(profit)}</span>
               </div>
             )}
+            {/* in the app only: the invoice above, its print and its PDF never show it */}
+            <MrpSummary lines={inv.items || []} className="mt-4" />
           </Card>
 
           <Card className="p-5">

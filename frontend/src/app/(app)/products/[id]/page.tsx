@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { get } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { inr } from "@/lib/format";
+import { inr, num } from "@/lib/format";
+import { mrpDiscount } from "@/lib/discount";
 import { P } from "@/lib/permissions";
 import type { Product } from "@/lib/types";
 import { useShopAction, useShopScope } from "@/lib/shop";
@@ -45,6 +46,7 @@ function ProductDetail() {
 
   if (isLoading || !p) return <div className="h-64 animate-pulse rounded-xl border border-border bg-surface" />;
 
+  const offer = mrpDiscount(p.mrp, p.mrpDiscountType, p.mrpDiscountValue);
   const margin = p.purchasePrice !== undefined ? p.sellingPrice / (1 + p.taxPercent / 100) - p.purchasePrice : null;
 
   return (
@@ -112,6 +114,16 @@ function ProductDetail() {
               <span className="font-medium tabular">{inr(p.sellingPrice)}</span>
             </Detail>
             <Detail label="MRP">{p.mrp ? inr(p.mrp) : null}</Detail>
+            {offer && offer.off > 0 && (
+              <Detail label="After discount on MRP">
+                <span className="tabular">
+                  <span className="font-medium">{inr(offer.net)}</span>{" "}
+                  <span className="text-fg-3">
+                    − {num(offer.percent)}% ({inr(offer.off)})
+                  </span>
+                </span>
+              </Detail>
+            )}
             {p.avgCost !== undefined && <Detail label="Avg. cost (this view)">{inr(p.avgCost)}</Detail>}
             {p.purchasePrice !== undefined && <Detail label="Last purchase price">{inr(p.purchasePrice)}</Detail>}
             {margin !== null && (

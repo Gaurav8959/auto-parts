@@ -142,15 +142,23 @@ export function PurchaseForm({
       toast.message(`${product.name} is already on this purchase`);
       return;
     }
+    // A line starts from the part's MRP less its discount on MRP, as set on the product: MRP − discount
+    // (+ GST on a GST bill) is what it costs. The product's ₹ discount is per unit while a line's is off the
+    // whole line, so it comes in as the same percent (₹2 off ₹10 is 20%), which holds at any quantity.
+    // A part without an MRP starts from its last cost.
+    const mrp = Number(product.mrp) || 0;
+    const off = mrp > 0 ? Number(product.mrpDiscountValue) || 0 : 0;
+    const percent =
+      off > 0 ? (product.mrpDiscountType === "AMOUNT" ? convertDiscount(mrp, off, "PERCENT") : off) : 0;
     setLines((prev) => [
       ...prev,
       {
         product,
         quantity: "1",
-        unitCost: product.purchasePrice ? String(product.purchasePrice) : "",
+        unitCost: mrp > 0 ? String(mrp) : product.purchasePrice ? String(product.purchasePrice) : "",
         taxPercent: String(product.taxPercent),
         discountType: "PERCENT",
-        discount: "",
+        discount: percent > 0 ? String(percent) : "",
       },
     ]);
   };
@@ -236,8 +244,8 @@ export function PurchaseForm({
             {editing
               ? "Change the supplier, items, quantities or costs. Stock and average cost follow, and this edit is kept in the history."
               : isGst
-              ? "Enter the supplier's GST bill. Costs are before GST. Saving adds the items to stock and updates average cost."
-              : "Enter the supplier's bill. No GST: the price you pay is the cost. Saving adds the items to the same stock."}
+              ? "Enter the supplier's GST bill: MRP less discount, with GST added on what's left. Saving adds the items to stock and updates average cost."
+              : "Enter the supplier's bill: MRP less discount is what you pay, with no GST on top. Saving adds the items to the same stock."}
           </p>
           {currentShop && (
             <p className="mt-2 inline-flex items-center gap-2 rounded-full border border-border bg-surface py-0.5 pr-2.5 pl-1 text-xs text-fg-2 shadow-card dark:bg-surface-2">
@@ -285,7 +293,7 @@ export function PurchaseForm({
                 <tr className="text-xs text-fg-3">
                   <th className="h-9 pl-5 text-left font-medium">Item</th>
                   <th className="w-24 px-1 text-right font-medium">Qty</th>
-                  <th className="w-32 px-1 text-right font-medium">Unit cost</th>
+                  <th className="w-32 px-1 text-right font-medium">MRP</th>
                   <th className="w-40 px-1 text-right font-medium">Discount</th>
                   {isGst && <th className="w-24 px-1 text-right font-medium">GST %</th>}
                   <th className="w-32 pr-3 text-right font-medium">Total</th>
@@ -318,6 +326,7 @@ export function PurchaseForm({
                         className={cn(cell, line.unitCost === "" && "border-warning")}
                         value={line.unitCost}
                         placeholder="0.00"
+                        aria-label={`MRP of ${line.product.name}`}
                         onChange={(e) => update(i, { unitCost: e.target.value })}
                       />
                     </td>

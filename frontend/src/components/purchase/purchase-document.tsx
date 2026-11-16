@@ -138,7 +138,7 @@ export function PurchaseDocument({ purchase }: { purchase: Purchase }) {
             <th className="px-1.5 py-1.5 text-left">#</th>
             <th className="px-1.5 py-1.5 text-left">Item</th>
             <th className="px-1.5 py-1.5 text-right">Qty</th>
-            <th className="px-1.5 py-1.5 text-right">Unit cost</th>
+            <th className="px-1.5 py-1.5 text-right">MRP</th>
             {hasDiscount && <th className="px-1.5 py-1.5 text-right">Disc.</th>}
             {isGst && (
               <>

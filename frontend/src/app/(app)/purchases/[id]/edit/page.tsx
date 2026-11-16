@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Guard } from "@/components/layout/guard";
 import { RequireThisShop } from "@/components/layout/require-shop";
 import { PurchaseForm, type PurchaseLine, type PurchasePrefill } from "@/components/purchase-form";
@@ -20,6 +20,8 @@ function EditForm({ purchase }: { purchase: Purchase }) {
   const { data: prefill, isError } = useQuery({
     queryKey: prefillKey,
     staleTime: 0,
+    // never start a new edit from a copy loaded on an earlier visit
+    gcTime: 0,
     queryFn: async (): Promise<PurchasePrefill> => {
       const items = purchase.items || [];
       const ids = [...new Set(items.map((i) => i.product?.id).filter((id): id is number => !!id))];
@@ -92,6 +94,8 @@ function EditForm({ purchase }: { purchase: Purchase }) {
 
 function EditPurchase() {
   const { id } = useParams<{ id: string }>();
+  // a fresh form, loaded from the saved purchase, on every visit to this page
+  const { bfcacheId } = useRouter();
   const { data: purchase, isError } = useQuery({
     queryKey: ["purchase", Number(id)],
     queryFn: () => get<Purchase>(`/purchase/${id}`),
@@ -117,7 +121,7 @@ function EditPurchase() {
     <>
       {back}
       <RequireThisShop shop={purchase.shop} action="edit this purchase">
-        <EditForm purchase={purchase} />
+        <EditForm key={bfcacheId} purchase={purchase} />
       </RequireThisShop>
     </>
   );
